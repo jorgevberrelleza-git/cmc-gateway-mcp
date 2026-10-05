@@ -25,8 +25,21 @@ function resultAsText(value) {
   };
 }
 
+const READ_ONLY_SECURITY = [{ type: 'oauth2', scopes: ['cmc:read'] }];
+const READ_ONLY_META = { securitySchemes: READ_ONLY_SECURITY };
+const READ_ONLY_ANNOTATIONS = { readOnlyHint: true, destructiveHint: false, openWorldHint: true };
+
+function securedConfig(config) {
+  return {
+    ...config,
+    securitySchemes: READ_ONLY_SECURITY,
+    annotations: READ_ONLY_ANNOTATIONS,
+    _meta: { ...(config?._meta || {}), ...READ_ONLY_META }
+  };
+}
+
 function registerProxy(server, name, description, inputSchema, mapArgs = x => x) {
-  server.registerTool(name, { description, inputSchema }, async input => {
+  server.registerTool(name, securedConfig({ description, inputSchema }), async input => {
     try {
       return resultAsText(await pass(name, mapArgs(input)));
     } catch (error) {
@@ -129,10 +142,10 @@ export function registerCmcTools(server) {
 
   server.registerTool(
     'cmc_list_upstream_tools',
-    {
+    securedConfig({
       description: 'Diagnostic tool: list the exact tools and JSON schemas currently advertised by the upstream CoinMarketCap MCP server. Useful when CMC changes an input schema.',
       inputSchema: z.object({}).strict()
-    },
+    }),
     async () => {
       try {
         const { tools } = await listUpstreamTools();
@@ -146,13 +159,13 @@ export function registerCmcTools(server) {
 
   server.registerTool(
     'cmc_raw_call',
-    {
+    securedConfig({
       description: 'Read-only escape hatch for calling one of the 12 allow-listed CoinMarketCap MCP tools with its exact upstream argument object. Use only if a wrapper schema is stale.',
       inputSchema: z.object({
         tool_name: z.string(),
         arguments: z.record(z.string(), z.unknown()).default({})
       })
-    },
+    }),
     async ({ tool_name, arguments: args }) => {
       if (!OFFICIAL_TOOLS.has(tool_name)) {
         return {
@@ -170,10 +183,10 @@ export function registerCmcTools(server) {
 
   server.registerTool(
     'market_report',
-    {
+    securedConfig({
       description: 'Composite trading-context snapshot built from CoinMarketCap global metrics, market technicals, derivatives, narratives, upcoming events, and BTC/ETH quotes. Read-only.',
       inputSchema: z.object({}).strict()
-    },
+    }),
     async () => {
       const jobs = {
         global: ['get_global_metrics_latest', {}],
@@ -199,13 +212,13 @@ export function registerCmcTools(server) {
 
   server.registerTool(
     'asset_research',
-    {
+    securedConfig({
       description: 'Composite CoinMarketCap due-diligence snapshot for one asset: identity, quote, project info, holder metrics, technical analysis and recent news. It resolves the CMC ID automatically.',
       inputSchema: z.object({
         query: z.string().min(1).max(120),
         news_limit: z.number().int().min(1).max(10).default(5)
       })
-    },
+    }),
     async ({ query, news_limit }) => {
       try {
         const search = await callCmcTool('search_cryptos', { query });

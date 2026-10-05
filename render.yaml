@@ -7,8 +7,12 @@ services:
     envVars:
       - key: CMC_MCP_API_KEY
         sync: false
-      - key: GATEWAY_BEARER_TOKEN
+      - key: OAUTH_LOGIN_SECRET
+        sync: false
+      - key: OAUTH_SIGNING_SECRET
         generateValue: true
+      - key: ALLOW_LEGACY_BEARER
+        value: "false"
       - key: CMC_MAX_CALLS_PER_MINUTE
         value: "25"
       - key: CMC_TIMEOUT_MS

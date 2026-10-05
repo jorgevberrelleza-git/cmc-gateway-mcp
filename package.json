@@ -1,15 +1,16 @@
 {
   "name": "cmc-gateway-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Read-only MCP gateway for CoinMarketCap with market-report and asset-research composites.",
+  "description": "Read-only OAuth-protected MCP gateway for CoinMarketCap with trading-research composites.",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "check": "node --check src/server.mjs && node --check src/cmc-client.mjs && node --check src/tools.mjs",
+    "check": "node --check src/server.mjs && node --check src/oauth.mjs && node --check src/cmc-client.mjs && node --check src/tools.mjs && node --check scripts/oauth-selftest.mjs && node --check scripts/smoke.mjs",
+    "oauth:selftest": "node scripts/oauth-selftest.mjs",
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
