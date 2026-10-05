@@ -1,10 +1,43 @@
-# CMC Gateway MCP v0.2
+# CMC Gateway MCP v0.3
 
-A private, read-only Model Context Protocol gateway for CoinMarketCap. It keeps the CoinMarketCap API key on the server, exposes the official CMC research tools plus composite trading-research tools, and now supports OAuth authorization-code + PKCE for ChatGPT MCP linking.
+Private, read-only CoinMarketCap gateway for the Asesor Crypto trading-engine experiment.
 
-It **cannot place trades**, cannot withdraw funds, and does not connect to Bitso.
+v0.3 supports two parallel workflows:
 
-## Core tools
+1. **ChatGPT Plus now:** use the private `/snapshot` console to generate structured BTC/AAVE/ADA market evidence and paste it into the existing chat.
+2. **ChatGPT Pro later:** use the existing OAuth-protected `/mcp` endpoint directly from ChatGPT Developer Mode.
+
+It cannot place trades, cannot withdraw funds, and does not connect to Bitso.
+
+## Trading Snapshot Console
+
+Open:
+
+`https://YOUR-SERVICE.onrender.com/snapshot`
+
+Enter your existing `OAUTH_LOGIN_SECRET`, keep `BTC,AAVE,ADA`, and click **Generar Trading Snapshot**.
+
+The snapshot combines:
+
+- global crypto metrics and sentiment context;
+- total-market technical analysis;
+- global derivatives positioning;
+- trending narratives;
+- upcoming macro/events;
+- BTC/ETH quotes;
+- per-asset quote, project info, holder metrics, technical analysis and recent news.
+
+Use **Copiar para ChatGPT** to copy a prompt-ready package into the Asesor Crypto conversation.
+
+### Snapshot protection
+
+`POST /api/snapshot` requires the existing `OAUTH_LOGIN_SECRET` via a private request header. The API key is never sent to the browser. Requests are throttled by IP to reduce accidental credit consumption.
+
+Default limit: `6` snapshots per 10 minutes per IP. Configure with:
+
+`SNAPSHOT_MAX_REQUESTS_PER_10_MIN`
+
+## MCP tools retained
 
 Official CMC passthrough tools:
 
@@ -26,9 +59,9 @@ Gateway helpers:
 - `market_report`
 - `asset_research`
 - `cmc_list_upstream_tools`
-- `cmc_raw_call` (strictly allow-listed read-only tools)
+- `cmc_raw_call`
 
-## OAuth endpoints
+## OAuth endpoints retained for future Pro use
 
 - MCP resource: `/mcp`
 - Protected Resource Metadata: `/.well-known/oauth-protected-resource`
@@ -39,17 +72,22 @@ Gateway helpers:
 - Revocation: `/oauth/revoke`
 - Health: `/healthz`
 
-OAuth uses authorization code + PKCE S256. The gateway supports public dynamically registered clients (`token_endpoint_auth_method=none`) and issues short-lived access tokens plus refresh tokens.
+OAuth uses authorization code + PKCE S256.
 
-## Required production secrets
+## Required Render secrets
 
 - `CMC_MCP_API_KEY`
 - `OAUTH_LOGIN_SECRET` (16+ characters)
 - `OAUTH_SIGNING_SECRET` (32+ characters; 64+ recommended)
 
-On Render, the server automatically uses `RENDER_EXTERNAL_URL` as its OAuth issuer/base URL. `PUBLIC_BASE_URL` can override it for a custom domain.
+Recommended settings:
 
-See `UPGRADE-OAUTH.md` for the exact Render upgrade steps.
+- `ALLOW_LEGACY_BEARER=false`
+- `CMC_MAX_CALLS_PER_MINUTE=25`
+- `CMC_TIMEOUT_MS=20000`
+- `SNAPSHOT_MAX_REQUESTS_PER_10_MIN=6`
+
+On Render, `RENDER_EXTERNAL_URL` is used automatically as the public base URL.
 
 ## Development
 
@@ -60,18 +98,16 @@ npm run oauth:selftest
 npm start
 ```
 
-For local development set `PUBLIC_BASE_URL`, `OAUTH_LOGIN_SECRET`, `OAUTH_SIGNING_SECRET`, and `CMC_MCP_API_KEY` in your shell. Never commit secrets.
+Never commit secrets.
 
-## Security guardrails
+## Architecture
 
-- Read-only tool allow-list.
-- Tool descriptors advertise OAuth `cmc:read` plus read-only annotations.
-- CMC key remains server-side.
-- OAuth access tokens are resource- and scope-bound.
-- PKCE S256 enforced.
-- Redirect URIs restricted to ChatGPT/OpenAI HTTPS hosts by default.
-- Login brute-force throttling.
-- Upstream rate limiter and per-call timeout.
-- No exchange execution.
+Current:
 
-Before adding any future Bitso write action, use a persistent, audited identity provider and keep execution authorization separate from the AI decision layer.
+`CoinMarketCap MCP -> CMC Gateway -> /snapshot -> ChatGPT Plus -> human execution`
+
+Future:
+
+`Market data -> Quant/AI engines -> Risk engine -> Decision API -> Bitso execution`
+
+The AI decision layer and future exchange execution should remain separated by deterministic risk controls and audited authorization.

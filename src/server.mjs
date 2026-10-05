@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { registerCmcTools } from './tools.mjs';
+import { handleSnapshotHttp } from './snapshot.mjs';
 import {
   createOAuthConfig,
   handleOAuthHttp,
@@ -17,7 +18,7 @@ const oauth = createOAuthConfig();
 
 function makeServer() {
   const server = new McpServer(
-    { name: 'cmc-gateway', version: '0.2.0' },
+    { name: 'cmc-gateway', version: '0.3.0' },
     {
       capabilities: { tools: {} },
       instructions: 'Read-only CoinMarketCap gateway. Never places trades or performs exchange writes. Prefer market_report for broad market context and asset_research for one-token due diligence.'
@@ -70,7 +71,7 @@ const httpServer = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'cmc-gateway-mcp',
-      version: '0.2.0',
+      version: '0.3.0',
       oauth: true,
       issuer: oauth.issuer,
       resource: oauth.resource,
@@ -78,6 +79,8 @@ const httpServer = http.createServer(async (req, res) => {
     }));
     return;
   }
+
+  if (await handleSnapshotHttp(req, res, url)) return;
 
   if (await handleOAuthHttp(req, res, url, oauth)) return;
 
@@ -106,10 +109,11 @@ const httpServer = http.createServer(async (req, res) => {
 });
 
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.error(`CMC Gateway MCP v0.2.0 listening on http://0.0.0.0:${PORT}/mcp`);
+  console.error(`CMC Gateway MCP v0.3.0 listening on http://0.0.0.0:${PORT}/mcp`);
   console.error(`Public OAuth issuer: ${oauth.issuer}`);
   console.error(`Protected resource: ${oauth.resource}`);
   console.error(`Health check: http://0.0.0.0:${PORT}/healthz`);
+  console.error(`Snapshot console: ${oauth.baseUrl}/snapshot`);
   console.error('Inbound auth: OAuth 2.1 authorization code + PKCE (S256)');
   console.error(`Legacy bearer: ${ALLOW_LEGACY_BEARER ? 'enabled' : 'disabled'}`);
 });

@@ -1,5 +1,6 @@
 import * as z from 'zod/v4';
-import { callCmcTool, compactToolResult, extractFirstCmcId, listUpstreamTools } from './cmc-client.mjs';
+import { callCmcTool, compactToolResult, listUpstreamTools } from './cmc-client.mjs';
+import { buildAssetResearch, buildMarketReport } from './research.mjs';
 
 const OFFICIAL_TOOLS = new Set([
   'search_cryptos',
@@ -188,25 +189,11 @@ export function registerCmcTools(server) {
       inputSchema: z.object({}).strict()
     }),
     async () => {
-      const jobs = {
-        global: ['get_global_metrics_latest', {}],
-        technicals: ['get_crypto_marketcap_technical_analysis', {}],
-        derivatives: ['get_global_crypto_derivatives_metrics', {}],
-        narratives: ['trending_crypto_narratives', {}],
-        events: ['get_upcoming_macro_events', {}],
-        btc_eth: ['get_crypto_quotes_latest', { id: '1,1027' }]
-      };
-
-      const entries = await Promise.all(
-        Object.entries(jobs).map(async ([key, [tool, args]]) => {
-          try {
-            return [key, await pass(tool, args)];
-          } catch (error) {
-            return [key, { isError: true, error: error?.message || String(error) }];
-          }
-        })
-      );
-      return resultAsText({ generated_at: new Date().toISOString(), ...Object.fromEntries(entries) });
+      try {
+        return resultAsText(await buildMarketReport());
+      } catch (error) {
+        return { isError: true, content: [{ type: 'text', text: `market_report failed: ${error?.message || String(error)}` }] };
+      }
     }
   );
 
@@ -221,37 +208,7 @@ export function registerCmcTools(server) {
     }),
     async ({ query, news_limit }) => {
       try {
-        const search = await callCmcTool('search_cryptos', { query });
-        const id = extractFirstCmcId(search);
-        if (!id) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: `Could not resolve a numeric CoinMarketCap ID for "${query}". Use search_cryptos and inspect the result.` }]
-          };
-        }
-
-        const jobs = {
-          search: Promise.resolve(compactToolResult(search)),
-          quote: pass('get_crypto_quotes_latest', { id }),
-          info: pass('get_crypto_info', { id }),
-          holders: pass('get_crypto_metrics', { id }),
-          technicals: pass('get_crypto_technical_analysis', { id }),
-          news: pass('get_crypto_latest_news', { id, limit: news_limit })
-        };
-
-        const settled = await Promise.all(
-          Object.entries(jobs).map(async ([key, p]) => {
-            try { return [key, await p]; }
-            catch (error) { return [key, { isError: true, error: error?.message || String(error) }]; }
-          })
-        );
-
-        return resultAsText({
-          generated_at: new Date().toISOString(),
-          query,
-          cmc_id: id,
-          ...Object.fromEntries(settled)
-        });
+        return resultAsText(await buildAssetResearch(query, news_limit));
       } catch (error) {
         return { isError: true, content: [{ type: 'text', text: `asset_research failed: ${error?.message || String(error)}` }] };
       }

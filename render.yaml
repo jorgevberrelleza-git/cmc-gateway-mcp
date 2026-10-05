@@ -17,3 +17,5 @@ services:
         value: "25"
       - key: CMC_TIMEOUT_MS
         value: "20000"
+      - key: SNAPSHOT_MAX_REQUESTS_PER_10_MIN
+        value: "6"
