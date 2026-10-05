@@ -65,11 +65,11 @@ function page(res) {
 </style>
 </head>
 <body><main class="wrap"><section class="card">
-<h1>CMC Trading Snapshot Console <span class="pill">v0.3.1</span></h1>
-<p>Genera un paquete estructurado de CoinMarketCap para analizarlo en tu ChatGPT Plus. Es solo lectura: no puede operar ni mover fondos.</p>
+<h1>CMC Trading Snapshot Console <span class="pill">v0.3.2</span></h1>
+<p>Genera un snapshot CORE optimizado para el límite gratuito de CoinMarketCap: mercado + derivados + narrativas + eventos + quotes + técnicos BTC/AAVE/ADA. Es solo lectura.</p>
 <div class="grid">
 <div><label for="assets">Activos</label><input id="assets" value="BTC,AAVE,ADA" maxlength="40"></div>
-<div><label for="news">Noticias / activo</label><input id="news" type="number" min="1" max="5" value="4"></div>
+<div><label>Modo</label><input value="CORE · rate-limit aware" readonly></div>
 <div class="full"><label for="secret">Gateway login secret</label><input id="secret" type="password" autocomplete="current-password" placeholder="El mismo OAUTH_LOGIN_SECRET de Render"></div>
 </div>
 <div class="actions">
@@ -80,7 +80,7 @@ function page(res) {
 </div>
 <div id="status" class="status"></div>
 <textarea id="output" readonly spellcheck="false" placeholder="Aquí aparecerá el snapshot..."></textarea>
-<div class="note">Protección: máximo ${MAX_PER_10_MIN} snapshots cada 10 minutos por IP. Un snapshot BTC/AAVE/ADA usa varias llamadas CMC, por eso conviene generarlo sólo cuando vayamos a analizar una decisión.</div>
+<div class="note">Protección: máximo ${MAX_PER_10_MIN} snapshots cada 10 minutos por IP. El modo CORE usa como máximo 9 herramientas CMC para BTC/AAVE/ADA. Noticias/holders quedan para investigación profunda sólo cuando una señal lo justifique.</div>
 </section></main>
 <script>
 const $=id=>document.getElementById(id);let snapshot=null;
@@ -92,7 +92,7 @@ $('generate').onclick=async()=>{
  $('generate').disabled=true;$('copy').disabled=true;$('copyPrompt').disabled=true;snapshot=null;$('output').value='';
  setStatus('Consultando CoinMarketCap… puede tardar por el plan gratuito de Render.');
  try{
-  const r=await fetch('/api/snapshot',{method:'POST',headers:{'content-type':'application/json','x-gateway-secret':secret},body:JSON.stringify({assets,news_limit:Number($('news').value||4)})});
+  const r=await fetch('/api/snapshot',{method:'POST',headers:{'content-type':'application/json','x-gateway-secret':secret},body:JSON.stringify({assets})});
   const data=await r.json(); if(!r.ok) throw new Error(data.error_description||data.error||('HTTP '+r.status));
   snapshot=data; $('output').value=JSON.stringify(data,null,2); $('copy').disabled=false;$('copyPrompt').disabled=false;
   setStatus('Snapshot generado. Ya puedes copiarlo a ChatGPT.','ok');

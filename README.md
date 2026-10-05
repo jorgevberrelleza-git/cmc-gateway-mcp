@@ -1,8 +1,8 @@
-# CMC Gateway MCP v0.3.1
+# CMC Gateway MCP v0.3.2
 
 Private, read-only CoinMarketCap gateway for the Asesor Crypto trading-engine experiment.
 
-v0.3.1 supports two parallel workflows:
+v0.3.2 supports two parallel workflows:
 
 1. **ChatGPT Plus now:** use the private `/snapshot` console to generate structured BTC/AAVE/ADA market evidence and paste it into the existing chat.
 2. **ChatGPT Pro later:** use the existing OAuth-protected `/mcp` endpoint directly from ChatGPT Developer Mode.
@@ -111,3 +111,8 @@ Future:
 `Market data -> Quant/AI engines -> Risk engine -> Decision API -> Bitso execution`
 
 The AI decision layer and future exchange execution should remain separated by deterministic risk controls and audited authorization.
+
+
+## v0.3.2 rate-limit strategy
+
+The Snapshot Console uses a 9-call CORE budget for BTC/AAVE/ADA. Deep news/holders research is intentionally on-demand so technical evidence is not lost to CoinMarketCap MCP free-tier rate limits.
