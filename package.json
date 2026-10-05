@@ -1,6 +1,6 @@
 {
   "name": "cmc-gateway-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "Read-only OAuth-protected CoinMarketCap MCP gateway with a private Trading Snapshot console for ChatGPT Plus.",

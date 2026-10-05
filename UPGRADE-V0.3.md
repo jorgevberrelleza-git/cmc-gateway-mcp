@@ -1,6 +1,6 @@
-# Upgrade to v0.3 — Trading Snapshot Console
+# Upgrade to v0.3.1 — Trading Snapshot Console
 
-v0.3 keeps the existing OAuth/MCP gateway and adds a private browser console for ChatGPT Plus users.
+v0.3.1 keeps the existing OAuth/MCP gateway and adds a private browser console for ChatGPT Plus users.
 
 ## What is new
 
@@ -14,7 +14,7 @@ v0.3 keeps the existing OAuth/MCP gateway and adds a private browser console for
 
 ## Render upgrade
 
-1. Replace the repository files with the v0.3 files and commit to `main`.
+1. Replace the repository files with the v0.3.1 files and commit to `main`.
 2. Keep all existing Render secrets unchanged:
    - `CMC_MCP_API_KEY`
    - `OAUTH_LOGIN_SECRET`
@@ -23,7 +23,7 @@ v0.3 keeps the existing OAuth/MCP gateway and adds a private browser console for
 3. Optional environment variable:
    - `SNAPSHOT_MAX_REQUESTS_PER_10_MIN=6`
 4. Let Render redeploy.
-5. Confirm `/healthz` reports `"version":"0.3.0"`.
+5. Confirm `/healthz` reports `"version":"0.3.1"`.
 6. Open `/snapshot`.
 7. Enter the same value you configured as `OAUTH_LOGIN_SECRET`, then click **Generar Trading Snapshot**.
 

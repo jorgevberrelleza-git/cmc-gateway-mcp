@@ -51,7 +51,7 @@ function json(res, status, body) {
 }
 
 function page(res) {
-  const html = `<!doctype html>
+  const html = String.raw`<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -65,7 +65,7 @@ function page(res) {
 </style>
 </head>
 <body><main class="wrap"><section class="card">
-<h1>CMC Trading Snapshot Console <span class="pill">v0.3</span></h1>
+<h1>CMC Trading Snapshot Console <span class="pill">v0.3.1</span></h1>
 <p>Genera un paquete estructurado de CoinMarketCap para analizarlo en tu ChatGPT Plus. Es solo lectura: no puede operar ni mover fondos.</p>
 <div class="grid">
 <div><label for="assets">Activos</label><input id="assets" value="BTC,AAVE,ADA" maxlength="40"></div>

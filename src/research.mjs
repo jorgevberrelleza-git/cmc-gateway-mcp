@@ -73,7 +73,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], ne
   )];
 
   if (cleanAssets.length < 1) throw new Error('At least one asset is required');
-  if (cleanAssets.length > 3) throw new Error('v0.3 supports up to 3 assets per snapshot to protect API credits and latency');
+  if (cleanAssets.length > 3) throw new Error('v0.3.1 supports up to 3 assets per snapshot to protect API credits and latency');
 
   const safeNewsLimit = Math.min(5, Math.max(1, Number(newsLimit) || 4));
 
@@ -89,7 +89,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], ne
   ]);
 
   return {
-    snapshot_version: '0.3.0',
+    snapshot_version: '0.3.1',
     generated_at: new Date().toISOString(),
     provider: 'CoinMarketCap MCP via private CMC Gateway',
     mode: 'read_only_decision_support',
