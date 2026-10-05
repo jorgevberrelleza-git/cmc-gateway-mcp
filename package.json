@@ -1,22 +1,24 @@
 {
   "name": "cmc-gateway-mcp",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Read-only OAuth-protected CoinMarketCap MCP gateway with a private Trading Snapshot console for ChatGPT Plus.",
+  "description": "Read-only OAuth-protected CMC + Bitso microstructure gateway with Trading Snapshot console for ChatGPT Plus.",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "check": "node --check src/server.mjs && node --check src/oauth.mjs && node --check src/cmc-client.mjs && node --check src/research.mjs && node --check src/snapshot.mjs && node --check src/tools.mjs && node --check scripts/oauth-selftest.mjs && node --check scripts/smoke.mjs",
+    "check": "node --check src/server.mjs && node --check src/oauth.mjs && node --check src/cmc-client.mjs && node --check src/bitso-client.mjs && node --check src/microstructure.mjs && node --check src/research.mjs && node --check src/snapshot.mjs && node --check src/tools.mjs && node --check scripts/microstructure-selftest.mjs && node --check scripts/oauth-selftest.mjs && node --check scripts/smoke.mjs",
     "oauth:selftest": "node scripts/oauth-selftest.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "microstructure:selftest": "node scripts/microstructure-selftest.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
     "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "ws": "^8.18.0"
   }
 }

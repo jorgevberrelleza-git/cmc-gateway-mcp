@@ -1,118 +1,123 @@
-# CMC Gateway MCP v0.3.2
+# CMC Gateway MCP v0.4 — CMC + Bitso Microstructure
 
-Private, read-only CoinMarketCap gateway for the Asesor Crypto trading-engine experiment.
-
-v0.3.2 supports two parallel workflows:
-
-1. **ChatGPT Plus now:** use the private `/snapshot` console to generate structured BTC/AAVE/ADA market evidence and paste it into the existing chat.
-2. **ChatGPT Pro later:** use the existing OAuth-protected `/mcp` endpoint directly from ChatGPT Developer Mode.
-
-It cannot place trades, cannot withdraw funds, and does not connect to Bitso.
-
-## Trading Snapshot Console
-
-Open:
-
-`https://YOUR-SERVICE.onrender.com/snapshot`
-
-Enter your existing `OAUTH_LOGIN_SECRET`, keep `BTC,AAVE,ADA`, and click **Generar Trading Snapshot**.
-
-The snapshot combines:
-
-- global crypto metrics and sentiment context;
-- total-market technical analysis;
-- global derivatives positioning;
-- trending narratives;
-- upcoming macro/events;
-- BTC/ETH quotes;
-- per-asset quote, project info, holder metrics, technical analysis and recent news.
-
-Use **Copiar para ChatGPT** to copy a prompt-ready package into the Asesor Crypto conversation.
-
-### Snapshot protection
-
-`POST /api/snapshot` requires the existing `OAUTH_LOGIN_SECRET` via a private request header. The API key is never sent to the browser. Requests are throttled by IP to reduce accidental credit consumption.
-
-Default limit: `6` snapshots per 10 minutes per IP. Configure with:
-
-`SNAPSHOT_MAX_REQUESTS_PER_10_MIN`
-
-## MCP tools retained
-
-Official CMC passthrough tools:
-
-- `search_cryptos`
-- `get_crypto_quotes_latest`
-- `get_crypto_info`
-- `get_crypto_metrics`
-- `get_crypto_technical_analysis`
-- `get_crypto_latest_news`
-- `search_crypto_info`
-- `get_global_metrics_latest`
-- `get_global_crypto_derivatives_metrics`
-- `get_crypto_marketcap_technical_analysis`
-- `trending_crypto_narratives`
-- `get_upcoming_macro_events`
-
-Gateway helpers:
-
-- `market_report`
-- `asset_research`
-- `cmc_list_upstream_tools`
-- `cmc_raw_call`
-
-## OAuth endpoints retained for future Pro use
-
-- MCP resource: `/mcp`
-- Protected Resource Metadata: `/.well-known/oauth-protected-resource`
-- Authorization Server Metadata: `/.well-known/oauth-authorization-server`
-- Dynamic Client Registration: `/oauth/register`
-- Authorization: `/oauth/authorize`
-- Token: `/oauth/token`
-- Revocation: `/oauth/revoke`
-- Health: `/healthz`
-
-OAuth uses authorization code + PKCE S256.
-
-## Required Render secrets
-
-- `CMC_MCP_API_KEY`
-- `OAUTH_LOGIN_SECRET` (16+ characters)
-- `OAUTH_SIGNING_SECRET` (32+ characters; 64+ recommended)
-
-Recommended settings:
-
-- `ALLOW_LEGACY_BEARER=false`
-- `CMC_MAX_CALLS_PER_MINUTE=25`
-- `CMC_TIMEOUT_MS=20000`
-- `SNAPSHOT_MAX_REQUESTS_PER_10_MIN=6`
-
-On Render, `RENDER_EXTERNAL_URL` is used automatically as the public base URL.
-
-## Development
-
-```bash
-npm install
-npm run check
-npm run oauth:selftest
-npm start
-```
-
-Never commit secrets.
+A private, read-only decision-support gateway for the crypto trading experiment.
 
 ## Architecture
 
-Current:
+```text
+CoinMarketCap MCP ─┐
+                   ├─> CMC Gateway v0.4 ─> Trading Snapshot ─> ChatGPT decision process
+Bitso public data ─┘
+```
 
-`CoinMarketCap MCP -> CMC Gateway -> /snapshot -> ChatGPT Plus -> human execution`
+The service **cannot trade**. It has no Bitso private API key and uses only public market data.
 
-Future:
+## Core CMC layer
 
-`Market data -> Quant/AI engines -> Risk engine -> Decision API -> Bitso execution`
+The core snapshot preserves the rate-limit-aware design introduced in v0.3.2:
 
-The AI decision layer and future exchange execution should remain separated by deterministic risk controls and audited authorization.
+- global market metrics;
+- market technicals;
+- global derivatives;
+- narratives;
+- upcoming events;
+- batched quotes;
+- BTC/AAVE/ADA technical analysis.
 
+The maximum core budget remains 9 upstream CMC tool calls for the default three assets.
 
-## v0.3.2 rate-limit strategy
+## v0.4 Microstructure Engine
 
-The Snapshot Console uses a 9-call CORE budget for BTC/AAVE/ADA. Deep news/holders research is intentionally on-demand so technical evidence is not lost to CoinMarketCap MCP free-tier rate limits.
+For each requested asset the gateway discovers the relevant Bitso execution book and collects:
+
+- aggregated order book;
+- recent public trades;
+- a short WebSocket sample of `orders`, `trades`, and `diff-orders`.
+
+It then calculates:
+
+- spread and depth;
+- bid/ask imbalance;
+- aggressive flow imbalance;
+- cancellation/completion behavior observed during the sample;
+- fast large cancellations observed within the capture window;
+- book/flow divergence;
+- data-quality checks;
+- `trap_risk_0_100`;
+- `crowding_risk_0_100`;
+- `spot_confirmation_0_100`;
+- an execution-context gate.
+
+These are **decision-support heuristics, not proof of manipulation**.
+
+## Web console
+
+Open:
+
+```text
+https://YOUR-SERVICE.onrender.com/snapshot
+```
+
+Enter the existing `OAUTH_LOGIN_SECRET`, choose BTC/AAVE/ADA, and generate the snapshot. The default Bitso WebSocket capture is 6 seconds.
+
+The **Copiar para ChatGPT** button adds instructions to evaluate the microstructure fields explicitly.
+
+## MCP endpoints
+
+The existing OAuth-protected MCP remains available at:
+
+```text
+/mcp
+```
+
+v0.4 adds two local read-only tools:
+
+- `bitso_microstructure`
+- `trading_snapshot`
+
+All previous CMC tools remain available.
+
+## Environment variables
+
+Required existing variables:
+
+```text
+CMC_MCP_API_KEY=...
+OAUTH_LOGIN_SECRET=...
+OAUTH_SIGNING_SECRET=...
+ALLOW_LEGACY_BEARER=false
+CMC_MAX_CALLS_PER_MINUTE=9
+```
+
+Optional Bitso variables:
+
+```text
+BITSO_REST_BASE=https://bitso.com/api/v3
+BITSO_WS_URL=wss://ws.bitso.com
+BITSO_CAPTURE_MS=6000
+BITSO_TIMEOUT_MS=12000
+BITSO_PREFERRED_MINORS=mxn,usd,usdc,usdt
+```
+
+No Bitso credential is needed.
+
+## Local checks
+
+```bash
+npm run check
+npm run microstructure:selftest
+```
+
+The included self-test validates spread, aggressive-flow, imbalance-flip and fast-cancellation scoring logic with synthetic fixtures.
+
+## Safety model
+
+- read-only CoinMarketCap;
+- read-only public Bitso market data;
+- no withdrawal permissions;
+- no place-order endpoint;
+- no private Bitso credentials;
+- heuristic signals never labelled as confirmed manipulation;
+- missing or inconsistent microstructure data reduces confidence rather than silently creating a trade signal.
+
+See `UPGRADE-V0.4.md` for deployment steps.

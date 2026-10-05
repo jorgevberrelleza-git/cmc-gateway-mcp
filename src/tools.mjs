@@ -1,6 +1,7 @@
 import * as z from 'zod/v4';
 import { callCmcTool, compactToolResult, listUpstreamTools } from './cmc-client.mjs';
-import { buildAssetResearch, buildMarketReport } from './research.mjs';
+import { buildAssetResearch, buildMarketReport, buildTradingSnapshot } from './research.mjs';
+import { buildMicrostructureSnapshot } from './microstructure.mjs';
 
 const OFFICIAL_TOOLS = new Set([
   'search_cryptos',
@@ -214,4 +215,42 @@ export function registerCmcTools(server) {
       }
     }
   );
+  server.registerTool(
+    'bitso_microstructure',
+    securedConfig({
+      description: 'Read-only Bitso public microstructure capture for 1-3 assets. Uses available books, aggregated order book, recent trades and a short public WebSocket sample to estimate spread/depth, aggressive flow, cancellation behavior, trap risk, crowding risk and spot confirmation. Heuristics do not prove manipulation.',
+      inputSchema: z.object({
+        assets: z.array(z.string().min(2).max(12)).min(1).max(3).default(['BTC','AAVE','ADA']),
+        capture_seconds: z.number().min(3).max(12).default(6)
+      })
+    }),
+    async ({ assets, capture_seconds }) => {
+      try {
+        // Standalone mode has no CMC context, so crowding is intentionally conservative/partial.
+        return resultAsText(await buildMicrostructureSnapshot({ assets, captureMs: capture_seconds * 1000 }));
+      } catch (error) {
+        return { isError: true, content: [{ type: 'text', text: `bitso_microstructure failed: ${error?.message || String(error)}` }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    'trading_snapshot',
+    securedConfig({
+      description: 'Composite read-only trading snapshot: CMC global regime, derivatives, narratives, quotes and per-asset technicals plus Bitso public microstructure/trap/crowding/spot-confirmation context. Never places orders.',
+      inputSchema: z.object({
+        assets: z.array(z.string().min(2).max(12)).min(1).max(3).default(['BTC','AAVE','ADA']),
+        include_microstructure: z.boolean().default(true),
+        capture_seconds: z.number().min(3).max(12).default(6)
+      })
+    }),
+    async ({ assets, include_microstructure, capture_seconds }) => {
+      try {
+        return resultAsText(await buildTradingSnapshot({ assets, includeMicrostructure: include_microstructure, captureMs: capture_seconds * 1000 }));
+      } catch (error) {
+        return { isError: true, content: [{ type: 'text', text: `trading_snapshot failed: ${error?.message || String(error)}` }] };
+      }
+    }
+  );
+
 }

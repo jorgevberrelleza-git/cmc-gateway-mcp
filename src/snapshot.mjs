@@ -57,7 +57,7 @@ function page(res) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>CMC Trading Snapshot Console</title>
+<title>Trading Snapshot Console</title>
 <style>
 :root{color-scheme:light dark;--bg:#f6f7f9;--card:#fff;--text:#15171a;--muted:#667085;--line:#d0d5dd;--accent:#111827;--soft:#f2f4f7;--ok:#067647;--err:#b42318}
 @media(prefers-color-scheme:dark){:root{--bg:#0b0d10;--card:#15181d;--text:#f4f4f5;--muted:#a1a1aa;--line:#343a40;--accent:#f4f4f5;--soft:#20242a;--ok:#6ce9a6;--err:#fda29b}}
@@ -65,11 +65,13 @@ function page(res) {
 </style>
 </head>
 <body><main class="wrap"><section class="card">
-<h1>CMC Trading Snapshot Console <span class="pill">v0.3.2</span></h1>
-<p>Genera un snapshot CORE optimizado para el límite gratuito de CoinMarketCap: mercado + derivados + narrativas + eventos + quotes + técnicos BTC/AAVE/ADA. Es solo lectura.</p>
+<h1>Trading Snapshot Console <span class="pill">v0.4.0</span></h1>
+<p>Snapshot CORE de CoinMarketCap + microestructura pública de Bitso: libro, trades, spread, profundidad, cancelaciones observadas, crowding y confirmación spot. Es solo lectura; no ejecuta órdenes.</p>
 <div class="grid">
 <div><label for="assets">Activos</label><input id="assets" value="BTC,AAVE,ADA" maxlength="40"></div>
-<div><label>Modo</label><input value="CORE · rate-limit aware" readonly></div>
+<div><label>Modo</label><input value="CORE + MICRO" readonly></div>
+<div><label for="capture">Captura Bitso (seg)</label><input id="capture" type="number" min="3" max="12" value="6"></div>
+<div><label>Microestructura</label><input value="Bitso público · read-only" readonly></div>
 <div class="full"><label for="secret">Gateway login secret</label><input id="secret" type="password" autocomplete="current-password" placeholder="El mismo OAUTH_LOGIN_SECRET de Render"></div>
 </div>
 <div class="actions">
@@ -80,7 +82,7 @@ function page(res) {
 </div>
 <div id="status" class="status"></div>
 <textarea id="output" readonly spellcheck="false" placeholder="Aquí aparecerá el snapshot..."></textarea>
-<div class="note">Protección: máximo ${MAX_PER_10_MIN} snapshots cada 10 minutos por IP. El modo CORE usa como máximo 9 herramientas CMC para BTC/AAVE/ADA. Noticias/holders quedan para investigación profunda sólo cuando una señal lo justifique.</div>
+<div class="note">Protección: máximo ${MAX_PER_10_MIN} snapshots cada 10 minutos por IP. CMC usa como máximo 9 herramientas para BTC/AAVE/ADA; Bitso usa endpoints públicos y una captura WebSocket corta. Los scores de trap/crowding son heurísticos y NO prueban manipulación.</div>
 </section></main>
 <script>
 const $=id=>document.getElementById(id);let snapshot=null;
@@ -89,10 +91,11 @@ function parseAssets(){return $('assets').value.split(',').map(x=>x.trim().toUpp
 $('generate').onclick=async()=>{
  const secret=$('secret').value.trim(); if(!secret){setStatus('Escribe tu Gateway login secret.','err');return}
  const assets=parseAssets(); if(!assets.length||assets.length>3){setStatus('Usa entre 1 y 3 activos.','err');return}
+ const captureSeconds=Math.max(3,Math.min(12,Number($('capture').value)||6));
  $('generate').disabled=true;$('copy').disabled=true;$('copyPrompt').disabled=true;snapshot=null;$('output').value='';
- setStatus('Consultando CoinMarketCap… puede tardar por el plan gratuito de Render.');
+ setStatus('Consultando CMC y capturando microestructura de Bitso… normalmente tarda unos segundos más.');
  try{
-  const r=await fetch('/api/snapshot',{method:'POST',headers:{'content-type':'application/json','x-gateway-secret':secret},body:JSON.stringify({assets})});
+  const r=await fetch('/api/snapshot',{method:'POST',headers:{'content-type':'application/json','x-gateway-secret':secret},body:JSON.stringify({assets,include_microstructure:true,capture_seconds:captureSeconds})});
   const data=await r.json(); if(!r.ok) throw new Error(data.error_description||data.error||('HTTP '+r.status));
   snapshot=data; $('output').value=JSON.stringify(data,null,2); $('copy').disabled=false;$('copyPrompt').disabled=false;
   setStatus('Snapshot generado. Ya puedes copiarlo a ChatGPT.','ok');
@@ -100,7 +103,7 @@ $('generate').onclick=async()=>{
  finally{$('generate').disabled=false}
 };
 $('copy').onclick=async()=>{if(!snapshot)return;await navigator.clipboard.writeText(JSON.stringify(snapshot,null,2));setStatus('JSON copiado.','ok')};
-$('copyPrompt').onclick=async()=>{if(!snapshot)return;const prompt='Analiza este CMC Trading Snapshot con nuestro Trading Engine actual. Integra estructura técnica, volumen, derivados, sentimiento, macro, catalizadores, fundamentos por activo, relative strength, concentración del portafolio, No-Chase y reward/risk. No atribuyas causalidad sin evidencia; valida con fuentes primarias cualquier noticia material antes de recomendar un cambio. Dime para cada activo MANTENER, COMPRAR, REDUCIR, VENDER o MOVER A USD, y registra la decisión como parte de nuestra base de aprendizaje.\n\nCMC TRADING SNAPSHOT:\n'+JSON.stringify(snapshot,null,2);await navigator.clipboard.writeText(prompt);setStatus('Prompt + snapshot copiados. Pégalos en nuestro chat.','ok')};
+$('copyPrompt').onclick=async()=>{if(!snapshot)return;const prompt='Analiza este Trading Snapshot v0.4 con nuestro Trading Engine actual. Integra estructura técnica, volumen, derivados, sentimiento, macro, catalizadores, relative strength, concentración, No-Chase, reward/risk y la microestructura de Bitso. Evalúa explícitamente trap_risk, crowding_risk y spot_confirmation. No afirmes spoofing/manipulación/stop-hunting como hecho: trata esos scores como huellas heurísticas. Si crowding o trap son altos, exige retest/confirmación y evita stops obvios. Valida noticias materiales con fuentes primarias antes de cambiar una posición. Dime para cada activo MANTENER, COMPRAR, REDUCIR, VENDER o MOVER A USD y registra la decisión para aprendizaje.\n\nTRADING SNAPSHOT V0.4:\n'+JSON.stringify(snapshot,null,2);await navigator.clipboard.writeText(prompt);setStatus('Prompt + snapshot copiados. Pégalos en nuestro chat.','ok')};
 $('clear').onclick=()=>{snapshot=null;$('output').value='';$('copy').disabled=true;$('copyPrompt').disabled=true;setStatus('')};
 </script></body></html>`;
 
@@ -138,7 +141,8 @@ export async function handleSnapshotHttp(req, res, url) {
       const body = JSON.parse((await readBody(req)) || '{}');
       const result = await buildTradingSnapshot({
         assets: body.assets,
-        newsLimit: body.news_limit
+        includeMicrostructure: body.include_microstructure !== false,
+        captureMs: Math.max(3000, Math.min(12000, Number(body.capture_seconds || 6) * 1000))
       });
       json(res, 200, result);
     } catch (error) {

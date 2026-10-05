@@ -1,4 +1,5 @@
 import { callCmcTool, compactToolResult, extractFirstCmcId } from './cmc-client.mjs';
+import { buildMicrostructureSnapshot } from './microstructure.mjs';
 
 async function pass(tool, args = {}) {
   return compactToolResult(await callCmcTool(tool, args));
@@ -85,7 +86,7 @@ export async function buildAssetResearch(query, newsLimit = 5) {
   };
 }
 
-export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'] } = {}) {
+export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], includeMicrostructure = true, captureMs } = {}) {
   const cleanAssets = [...new Set(
     (Array.isArray(assets) ? assets : [])
       .map(x => String(x || '').trim().toUpperCase())
@@ -93,18 +94,18 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'] } =
   )];
 
   if (cleanAssets.length < 1) throw new Error('At least one asset is required');
-  if (cleanAssets.length > 3) throw new Error('v0.3.2 supports up to 3 assets per core snapshot');
+  if (cleanAssets.length > 3) throw new Error('v0.4 supports up to 3 assets per core snapshot');
 
   const resolved = {};
   for (const asset of cleanAssets) {
     resolved[asset] = await resolveId(asset);
   }
 
-  // CORE SNAPSHOT BUDGET (BTC/AAVE/ADA):
+  // CMC CORE BUDGET (BTC/AAVE/ADA):
   //   market context = 5 calls
   //   batched quotes (assets + ETH benchmark) = 1 call
   //   technicals = 1 call per asset (max 3)
-  // Total = max 9 CMC tool calls, deliberately below the observed 10/minute ceiling.
+  // Total = max 9 CMC tool calls, deliberately below the observed free-tier ceiling.
   const market = await buildMarketReport();
 
   const quoteIds = [...new Set(['1027', ...cleanAssets.map(a => resolved[a].id)])].join(',');
@@ -123,20 +124,48 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'] } =
       technicalEntries.push([asset, { isError: true, error: error?.message || String(error) }]);
     }
   }
+  const assetTechnicals = Object.fromEntries(technicalEntries);
+
+  let microstructure = null;
+  if (includeMicrostructure) {
+    try {
+      microstructure = await buildMicrostructureSnapshot({
+        assets: cleanAssets,
+        quotes,
+        technicals: assetTechnicals,
+        market,
+        captureMs
+      });
+    } catch (error) {
+      microstructure = {
+        isError: true,
+        error: error?.message || String(error),
+        note: 'CMC core data is still valid. Do not infer manipulation from a failed Bitso microstructure capture.'
+      };
+    }
+  }
 
   return {
-    snapshot_version: '0.3.2',
+    snapshot_version: '0.4.0',
     generated_at: new Date().toISOString(),
-    provider: 'CoinMarketCap MCP via private CMC Gateway',
+    providers: ['CoinMarketCap MCP via private CMC Gateway', 'Bitso public REST/WebSocket'],
     mode: 'read_only_decision_support',
     execution_enabled: false,
-    snapshot_depth: 'core',
+    snapshot_depth: includeMicrostructure ? 'core_plus_microstructure' : 'core',
     assets: cleanAssets,
     cmc_ids: Object.fromEntries(cleanAssets.map(a => [a, resolved[a].id])),
     market,
     quotes,
-    asset_technicals: Object.fromEntries(technicalEntries),
-    deep_research_note: 'Holder metrics, project info and per-asset news are intentionally fetched only on demand via asset_research so the free-tier MCP rate limit is not exhausted before technical data arrives.',
-    usage_note: 'Use this as structured market evidence. Validate material catalysts with primary/authoritative sources before changing a real-money position.'
+    asset_technicals: assetTechnicals,
+    microstructure,
+    guardrails: {
+      no_manipulation_claim_without_evidence: true,
+      high_trap_risk_requires_confirmation: true,
+      high_crowding_requires_retest_or_spot_confirmation: true,
+      venue_signal_is_execution_context_not_a_trade_command: true
+    },
+    deep_research_note: 'Holder metrics, project info and per-asset news are intentionally fetched only on demand via asset_research so the free-tier CMC rate limit is preserved.',
+    usage_note: 'Use CMC as structured market evidence and Bitso microstructure as execution-context evidence. Validate material catalysts with primary/authoritative sources before changing a real-money position.'
   };
 }
+

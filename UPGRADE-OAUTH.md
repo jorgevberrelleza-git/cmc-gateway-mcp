@@ -1,4 +1,4 @@
-# Upgrade to v0.2 OAuth on Render
+# Historical upgrade notes — OAuth v0.2
 
 This release adds OAuth 2.1-style authorization-code + PKCE (S256) for ChatGPT MCP linking.
 It remains read-only and cannot trade.

@@ -14,8 +14,18 @@ services:
       - key: ALLOW_LEGACY_BEARER
         value: "false"
       - key: CMC_MAX_CALLS_PER_MINUTE
-        value: "25"
+        value: "9"
       - key: CMC_TIMEOUT_MS
         value: "20000"
       - key: SNAPSHOT_MAX_REQUESTS_PER_10_MIN
         value: "6"
+      - key: BITSO_REST_BASE
+        value: "https://bitso.com/api/v3"
+      - key: BITSO_WS_URL
+        value: "wss://ws.bitso.com"
+      - key: BITSO_CAPTURE_MS
+        value: "6000"
+      - key: BITSO_TIMEOUT_MS
+        value: "12000"
+      - key: BITSO_PREFERRED_MINORS
+        value: "mxn,usd,usdc,usdt"
