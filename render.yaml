@@ -25,6 +25,10 @@ services:
         value: "wss://ws.bitso.com"
       - key: BITSO_CAPTURE_MS
         value: "18000"
+      - key: BITSO_CAPTURE_MAX_MS
+        value: "45000"
+      - key: BITSO_MIN_LIVE_TRADES
+        value: "3"
       - key: BITSO_TIMEOUT_MS
         value: "12000"
       - key: BITSO_PREFERRED_MINORS

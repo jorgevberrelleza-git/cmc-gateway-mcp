@@ -76,29 +76,14 @@ function summarizeRecentTrades(trades = []) {
     if (Number.isFinite(ts)) { newest = newest==null ? ts : Math.max(newest,ts); oldest = oldest==null ? ts : Math.min(oldest,ts); }
   }
   const total=buyValue+sellValue;
-  const spanSeconds = newest!=null&&oldest!=null ? (newest-oldest)/1000 : null;
-  const newestAgeSeconds = newest!=null ? Math.max(0,(Date.now()-newest)/1000) : null;
-  let freshness=100;
-  if(newestAgeSeconds==null) freshness-=45;
-  else if(newestAgeSeconds>1800) freshness-=35;
-  else if(newestAgeSeconds>600) freshness-=20;
-  else if(newestAgeSeconds>180) freshness-=8;
-  if(spanSeconds==null) freshness-=20;
-  else if(spanSeconds>14400) freshness-=25;
-  else if(spanSeconds>7200) freshness-=15;
-  else if(spanSeconds>3600) freshness-=10;
-  else if(spanSeconds>1800) freshness-=5;
-  freshness=round(clamp(freshness),0);
   return {
     count: trades.length,
     aggressive_buy_value: round(buyValue,2), aggressive_sell_value:round(sellValue,2), unknown_value:round(unknown,2),
     aggressive_flow_imbalance: total ? round((buyValue-sellValue)/total,4) : null,
     high: prices.length ? Math.max(...prices) : null,
     low: prices.length ? Math.min(...prices) : null,
-    sample_span_seconds: spanSeconds==null?null:round(spanSeconds,1),
-    newest_trade_at: newest != null ? new Date(newest).toISOString() : null,
-    newest_trade_age_seconds: newestAgeSeconds==null?null:round(newestAgeSeconds,1),
-    freshness_0_100:freshness
+    sample_span_seconds: newest!=null&&oldest!=null ? round((newest-oldest)/1000,1) : null,
+    newest_trade_at: newest != null ? new Date(newest).toISOString() : null
   };
 }
 
@@ -142,39 +127,7 @@ function summarizeWallPersistence(snaps) {
     candidate_notional_median:round(med,2),
     dominant_wall:ranked[0]||null,
     persistent_large_wall_count:persistentLarge.length,
-    top_persistent_walls:persistentLarge.slice(0,3),
-    top_walls:ranked.slice(0,6)
-  };
-}
-
-function summarizePersistentWallPressure(wallPersistence, mid) {
-  if(mid==null||!Number.isFinite(mid)) return {available:false,reason:'missing_mid'};
-  const med=num(wallPersistence?.candidate_notional_median);
-  const walls=Array.isArray(wallPersistence?.top_walls)?wallPersistence.top_walls:[];
-  const near=[];
-  let bidScore=0, askScore=0;
-  for(const w of walls){
-    const rate=num(w?.rate), notional=num(w?.max_notional), persistence=num(w?.persistence_ratio);
-    if(rate==null||notional==null||persistence==null) continue;
-    const distanceBps=Math.abs((rate-mid)/mid)*10000;
-    if(distanceBps>250||persistence<0.35) continue;
-    const sizeMultiple=med&&med>0?notional/med:1;
-    const proximity=Math.max(0.15,1-distanceBps/300);
-    const strength=Math.min(6,sizeMultiple)*persistence*proximity;
-    if(w?.side==='bid') bidScore+=strength;
-    else if(w?.side==='ask') askScore+=strength;
-    near.push({oid:w?.oid||null,side:w?.side||null,rate,notional:round(notional,2),persistence_ratio:round(persistence,4),distance_bps:round(distanceBps,2),strength:round(strength,3)});
-  }
-  const total=bidScore+askScore;
-  const net=total?((bidScore-askScore)/total):0;
-  const score=round(net*100,0);
-  return {
-    available:true,
-    pressure_score_minus100_to100:score,
-    classification:score>=30?'persistent_bid_support':score<=-30?'persistent_overhead_supply':'balanced_or_weak',
-    bid_strength:round(bidScore,3),
-    ask_strength:round(askScore,3),
-    nearby_walls:near.sort((a,b)=>a.distance_bps-b.distance_bps).slice(0,6)
+    top_persistent_walls:persistentLarge.slice(0,3)
   };
 }
 
@@ -255,14 +208,9 @@ function summarizeWs(ws = {}) {
   const wallPersistence=summarizeWallPersistence(snaps);
   const midPath=summarizeMidPath(snaps);
   const confidence=microstructureConfidence(ws,snaps,streamTrades,resolvedMatched);
-  const lifecycleEvidenceQuality = completed>0 || streamTrades.length>0 ? 'directionally_useful' : resolvedMatched>=3 ? 'cancellation_only_context' : 'insufficient';
 
   return {
     capture_ms: ws?.capture_ms ?? null,
-    requested_min_capture_ms:ws?.requested_min_capture_ms??null,
-    max_capture_ms:ws?.max_capture_ms??null,
-    adaptive_min_live_trades:ws?.adaptive_min_live_trades??null,
-    adaptive_stop_reason:ws?.adaptive_stop_reason??null,
     subscriptions: ws?.subscriptions || {},
     order_snapshots: snaps.length,
     imbalance_mean: imbalances.length ? round(mean(imbalances),4) : null,
@@ -281,9 +229,7 @@ function summarizeWs(ws = {}) {
       unresolved:num(lifecycle.unresolved)||0,
       resolved_sample:resolvedMatched,
       cancellation_share_observed:matchedCancelShare==null?null:round(matchedCancelShare,4),
-      evidence_quality:lifecycleEvidenceQuality,
-      cancellation_share_actionability:lifecycleEvidenceQuality==='directionally_useful'?'normal_weight':lifecycleEvidenceQuality==='cancellation_only_context'?'reduced_weight':'ignore',
-      note:'Cancellation share uses only orders first opened during this capture and later resolved during the same capture. When no completed order and no live trade are observed, cancellation-only evidence is down-weighted rather than treated as direct trap evidence.'
+      note:'Cancellation share uses only orders first opened during this capture and later resolved during the same capture; raw diff cancellations are not treated as comparable lifecycle outcomes.'
     },
     median_new_order_notional: round(med,2),
     large_fast_cancelled_orders: largeFastCancelled.length,
@@ -313,19 +259,13 @@ function computeTrapRisk(depth, wsSummary, recent) {
 
   const cancel=num(wsSummary?.matched_lifecycle?.cancellation_share_observed);
   const resolved=num(wsSummary?.matched_lifecycle?.resolved_sample)||0;
-  const lifecycleQuality=String(wsSummary?.matched_lifecycle?.evidence_quality||'insufficient');
   if(cancel!=null&&resolved>=3){
-    let pts=cancel>=0.8?20:cancel>=0.65?15:cancel>=0.5?10:cancel>=0.35?5:0;
-    if(lifecycleQuality==='cancellation_only_context') pts=Math.min(5,pts);
-    if(lifecycleQuality==='insufficient') pts=0;
-    if(pts){score+=pts;reasons.push(`matched_cancel_share_${round(cancel*100,0)}pct_n${resolved}_${lifecycleQuality}`)}
+    const pts=cancel>=0.8?20:cancel>=0.65?15:cancel>=0.5?10:cancel>=0.35?5:0;
+    if(pts){score+=pts;reasons.push(`matched_cancel_share_${round(cancel*100,0)}pct_n${resolved}`)}
   }
 
   const fast=num(wsSummary?.large_fast_cancelled_orders)||0;
-  if(fast){
-    const cap=lifecycleQuality==='directionally_useful'?25:lifecycleQuality==='cancellation_only_context'?12:6;
-    const pts=Math.min(cap,fast*6);score+=pts;reasons.push(`large_fast_cancels_${fast}_${lifecycleQuality}`)
-  }
+  if(fast){const pts=Math.min(25,fast*8);score+=pts;reasons.push(`large_fast_cancels_${fast}`)}
 
   const flips10=num(wsSummary?.imbalance_flips_per_10s)||0;
   if(flips10>=4){score+=15;reasons.push(`book_flip_rate_${round(flips10,1)}_per10s`)}
@@ -386,21 +326,18 @@ function applyDirectionalEvidence(score, reasons, label, v, weight) {
   return score;
 }
 
-function computeSpotConfirmation(depth, wsSummary, recent, wallPressure) {
+function computeSpotConfirmation(depth, wsSummary, recent) {
   let score=50; const reasons=[];
   const recentFlow=num(recent?.aggressive_flow_imbalance);
   const liveFlow=num(wsSummary?.stream_aggressive_flow_imbalance);
   const lateBook=num(wsSummary?.imbalance_phase_means?.late);
   const finalBook=num(depth?.depth?.['50bps']?.imbalance);
-  const freshness=num(recent?.freshness_0_100);
-  const recentWeight=freshness!=null&&freshness>=80?10:freshness!=null&&freshness>=60?7:freshness!=null&&freshness>=40?4:2;
+  const span=num(recent?.sample_span_seconds);
+  const recentWeight=span!=null&&span<=900?10:span!=null&&span<=3600?7:4;
   score=applyDirectionalEvidence(score,reasons,'recent_flow',recentFlow,recentWeight);
   score=applyDirectionalEvidence(score,reasons,'live_flow',liveFlow,15);
   score=applyDirectionalEvidence(score,reasons,'late_book',lateBook,8);
   score=applyDirectionalEvidence(score,reasons,'rest_book',finalBook,7);
-  const wall=num(wallPressure?.pressure_score_minus100_to100);
-  if(wall!=null&&wall>=35){score+=8;reasons.push('persistent_wall_bid_support')}
-  else if(wall!=null&&wall<=-35){score-=8;reasons.push('persistent_wall_overhead_supply')}
   const spread=num(depth?.spread_bps);
   if(spread!=null&&spread<=3){score+=5;reasons.push('tight_spread')}
   else if(spread!=null&&spread>=10){score-=10;reasons.push('wide_spread')}
@@ -409,11 +346,11 @@ function computeSpotConfirmation(depth, wsSummary, recent, wallPressure) {
   if((num(wsSummary?.order_snapshots)||0)>=15) confidence+=20;
   if((num(wsSummary?.stream_trade_count)||0)>=3) confidence+=30;
   else if((num(wsSummary?.stream_trade_count)||0)>0) confidence+=15;
-  if(freshness!=null&&freshness>=80) confidence+=10;
-  else if(freshness!=null&&freshness>=60) confidence+=5;
+  if(span!=null&&span<=900) confidence+=10;
+  else if(span!=null&&span<=3600) confidence+=5;
   if((num(wsSummary?.sequence_gaps)||0)>0) confidence-=30;
   confidence=round(clamp(confidence),0);
-  return { score: round(clamp(score),0), reasons, confidence_0_100:confidence, rest_trade_freshness_0_100:freshness };
+  return { score: round(clamp(score),0), reasons, confidence_0_100:confidence };
 }
 
 function venuePriceCheck(symbol, minor, depth, quotes) {
@@ -439,10 +376,9 @@ export function analyzeBitsoRaw(raw, { symbol, quotes, technicals, market } = {}
   const depth=summarizeDepth(raw.order_book);
   const recent=summarizeRecentTrades(raw.recent_trades);
   const wsSummary=summarizeWs(raw.websocket);
-  const wallPressure=summarizePersistentWallPressure(wsSummary?.wall_persistence, num(depth?.mid));
   const trap=computeTrapRisk(depth,wsSummary,recent);
   const crowding=computeCrowdingRisk(symbol,quotes,technicals,market);
-  const spot=computeSpotConfirmation(depth,wsSummary,recent,wallPressure);
+  const spot=computeSpotConfirmation(depth,wsSummary,recent);
   const venue=venuePriceCheck(symbol,raw.resolved?.minor,depth,quotes);
   const confidence=num(wsSummary?.confidence_0_100)||0;
   const sweep=Boolean(wsSummary?.mid_path?.heuristic);
@@ -456,12 +392,11 @@ export function analyzeBitsoRaw(raw, { symbol, quotes, technicals, market } = {}
     if(trap.score>=75)gateReasons.push('trap_risk_75_plus');
     if(spot.score<25&&spot.confidence_0_100>=55)gateReasons.push('strong_negative_spot_confirmation');
     if(venue?.material_mismatch&&Math.abs(venue.basis_bps)>=250)gateReasons.push('large_venue_price_mismatch');
-  } else if(trap.score>=60 || crowding.score>=70 || (spot.score<40&&spot.confidence_0_100>=45) || (num(wallPressure?.pressure_score_minus100_to100)<=-60&&crowding.score>=50) || sweep || venue?.material_mismatch){
+  } else if(trap.score>=60 || crowding.score>=70 || (spot.score<40&&spot.confidence_0_100>=45) || sweep || venue?.material_mismatch){
     gate='WAIT_FOR_RETEST_OR_CONFIRMATION';
     if(trap.score>=60)gateReasons.push('trap_risk_60_plus');
     if(crowding.score>=70)gateReasons.push('crowding_70_plus');
     if(spot.score<40&&spot.confidence_0_100>=45)gateReasons.push('weak_spot_confirmation');
-    if(num(wallPressure?.pressure_score_minus100_to100)<=-60&&crowding.score>=50)gateReasons.push('persistent_overhead_supply_plus_crowding');
     if(sweep)gateReasons.push('sweep_or_rejection_heuristic');
     if(venue?.material_mismatch)gateReasons.push('venue_price_mismatch_100bps_plus');
   }
@@ -475,15 +410,12 @@ export function analyzeBitsoRaw(raw, { symbol, quotes, technicals, market } = {}
     order_book:depth,
     recent_trades:recent,
     live_microstructure:wsSummary,
-    persistent_wall_pressure:wallPressure,
     venue_price_check:venue,
     scores:{
       trap_risk_0_100:trap.score,
       crowding_risk_0_100:crowding.score,
       spot_confirmation_0_100:spot.score,
       spot_confirmation_confidence_0_100:spot.confidence_0_100,
-      rest_trade_freshness_0_100:spot.rest_trade_freshness_0_100,
-      persistent_wall_pressure_minus100_to100:num(wallPressure?.pressure_score_minus100_to100),
       microstructure_confidence_0_100:confidence
     },
     execution_context_gate: gate,
@@ -498,7 +430,7 @@ export function analyzeBitsoRaw(raw, { symbol, quotes, technicals, market } = {}
     },
     reasons:{trap:trap.reasons,crowding:crowding.reasons,spot_confirmation:spot.reasons},
     data_quality:{confidence_0_100:confidence,confidence_label:wsSummary.confidence_label,sequence_gaps:wsSummary.sequence_gaps,errors:[...(raw.errors||[]),...(wsSummary.errors||[])]},
-    interpretation_note:'Heuristic market-microstructure risk signals only. They do not prove spoofing, manipulation, or stop-hunting. v0.6 adaptively waits for live trades when possible, down-weights cancellation-only lifecycles, discounts stale REST flow, and treats persistent walls as directional supply/support rather than manipulation evidence.'
+    interpretation_note:'Heuristic market-microstructure risk signals only. They do not prove spoofing, manipulation, or stop-hunting. v0.5 cancellation metrics use matched order lifecycles observed from open to resolution within the capture window.'
   };
 }
 
@@ -510,19 +442,18 @@ export async function buildMicrostructureSnapshot({ assets, quotes, technicals, 
   return {
     generated_at:new Date().toISOString(),
     venue:'Bitso',
-    mode:'public_read_only_microstructure_v3',
+    mode:'public_read_only_microstructure_v2',
     execution_enabled:false,
     assets:out,
     methodology:{
-      trap_risk:'Spread + matched open-to-cancel lifecycle evidence + large fast cancellations + normalized book-imbalance churn + short-window sweep/rejection heuristics + book-vs-flow divergence. Cancellation-only evidence is capped when no live trade or completed lifecycle is observed.',
+      trap_risk:'Spread + matched open-to-cancel lifecycle evidence + large fast cancellations + normalized book-imbalance churn + short-window sweep/rejection heuristics + book-vs-flow divergence.',
       crowding_risk:'Public technical/momentum + global derivatives + sentiment. Global derivatives are a proxy, not asset-specific positioning.',
-      spot_confirmation:'Fresh live taker flow receives the highest weight. REST trade flow is explicitly freshness-scored and down-weighted when old or spread across hours. Persistent wall pressure, book imbalance and spread are supporting evidence.',
-      persistence:'Tracks dominant top-book order IDs across snapshots, calculates nearby persistent bid/ask pressure, and treats stable walls as directional supply/support rather than proof of manipulation.',
-      confidence:'Scores actual adaptive capture length, order snapshots, live trades, diff-order events, matched lifecycles, sequence integrity and WebSocket errors.',
-      cancellation_fix:'Raw cancellation counts can include orders opened before the capture. v0.6 keeps matched lifecycles and additionally reduces their trap weight when the sample contains cancellations but no completed orders and no live trades.',
-      adaptive_capture:'Capture uses the requested window as a minimum and can extend up to the configured maximum until enough live trades arrive; all assets are captured in parallel.'
+      spot_confirmation:'Fresh live taker flow receives the highest weight; slower REST trade flow receives less weight when its 100-trade window spans hours. Book imbalance and spread are supporting evidence.',
+      persistence:'Tracks dominant top-book order IDs across snapshots and reports how persistently large walls remain visible.',
+      confidence:'Scores capture length, order snapshots, live trades, diff-order events, matched lifecycles, sequence integrity and WebSocket errors.',
+      cancellation_fix:'Raw cancellation counts can include orders opened before the capture. v0.5 only computes cancellation share from orders first observed as newly opened during the capture and then resolved before capture end.'
     }
   };
 }
 
-export const _test = { summarizeDepth, summarizeRecentTrades, summarizeWallPersistence, summarizePersistentWallPressure, summarizeWs, computeTrapRisk, computeSpotConfirmation, venuePriceCheck };
+export const _test = { summarizeDepth, summarizeRecentTrades, summarizeWs, computeTrapRisk, computeSpotConfirmation, venuePriceCheck };

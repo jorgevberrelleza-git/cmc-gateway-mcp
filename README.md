@@ -1,146 +1,69 @@
-# CMC Gateway MCP v0.5 — Microstructure Engine v2
+# CMC Gateway MCP v0.6 — Adaptive Microstructure Engine v3
 
-Private, read-only crypto decision-support gateway for ChatGPT Plus today and MCP/OAuth later.
+Read-only CoinMarketCap + Bitso gateway for the Trading Snapshot workflow used with ChatGPT Plus. v0.6 keeps the same OAuth/MCP foundation and does **not** execute orders.
 
-## Architecture
+## What v0.6 changes
 
-```text
-CoinMarketCap MCP ─┐
-                   ├─> CMC Gateway v0.5 ─> Trading Snapshot ─> ChatGPT decision process
-Bitso public data ─┘
-```
+The v0.5 live test exposed two evidence-quality issues: an 18-second window can contain zero live trades, and a 100% cancellation share is easy to over-interpret when the sample has no observed completions or live fills. v0.6 addresses both without adding CoinMarketCap calls.
 
-The service **cannot trade**. It has no Bitso private API key and exposes no place/cancel-order endpoint.
+### 1. Adaptive Bitso capture
 
-## CMC CORE layer
-
-The rate-limit-aware core remains capped at a maximum of 9 upstream CMC tool calls for the default BTC/AAVE/ADA snapshot:
-
-- global market metrics;
-- market technicals;
-- global derivatives;
-- narratives;
-- upcoming events;
-- one batched quote request for the requested assets plus ETH;
-- one technical-analysis request per requested asset.
-
-v0.5 also calculates explicit 24 h / 7 d / 30 d relative strength against BTC and ETH from the same batched quote data, so this adds no CMC calls.
-
-## Bitso Microstructure Engine v2
-
-For each asset with a public Bitso book, v0.5 collects:
-
-- aggregated REST order book;
-- 100 recent public trades;
-- public WebSocket `orders`, `trades`, and `diff-orders` events;
-- a default 18-second live capture (selectable 6–30 seconds).
-
-### Key v0.5 fix: matched order lifecycles
-
-Raw `diff-orders` cancellation messages can refer to orders that existed before our capture started. Therefore raw cancellation counts are no longer used as a direct cancellation-rate signal.
-
-v0.5 computes cancellation share only from orders that are:
-
-1. first observed opening during the capture; and
-2. later observed as `cancelled` or `completed` during that same capture.
-
-The snapshot still reports raw diff counts for context, but the trap score uses the matched lifecycle sample.
-
-### New fields
-
-- `matched_lifecycle`
-- `wall_persistence`
-- `imbalance_phase_means` (early / middle / late)
-- `imbalance_flips_per_10s`
-- `mid_path` with short-window sweep/rejection heuristic
-- `stream_aggressive_flow_imbalance`
-- `microstructure_confidence_0_100`
-- `spot_confirmation_confidence_0_100`
-- `venue_price_check` for USD/stablecoin books
-- `relative_strength` against BTC/ETH
-- confidence-aware `execution_context_gate`
-
-The primary scores remain:
-
-- `trap_risk_0_100`
-- `crowding_risk_0_100`
-- `spot_confirmation_0_100`
-
-These are **heuristics**. They do not prove spoofing, manipulation, or stop-hunting.
-
-## Browser console
-
-Open:
+`BITSO_CAPTURE_MS` is now the **minimum** capture window. The WebSocket can continue up to `BITSO_CAPTURE_MAX_MS` while waiting for `BITSO_MIN_LIVE_TRADES`. Defaults:
 
 ```text
-https://YOUR-SERVICE.onrender.com/snapshot
-```
-
-Use the existing `OAUTH_LOGIN_SECRET`.
-
-Recommended first capture:
-
-```text
-18 seconds
-```
-
-Use 30 seconds when you want stronger microstructure evidence and can wait longer.
-
-## MCP tools
-
-OAuth-protected endpoint:
-
-```text
-/mcp
-```
-
-Local composite tools include:
-
-- `market_report`
-- `asset_research`
-- `bitso_microstructure`
-- `trading_snapshot`
-
-All exchange-side functionality remains read-only.
-
-## Environment
-
-Required existing values:
-
-```text
-CMC_MCP_API_KEY=...
-OAUTH_LOGIN_SECRET=...
-OAUTH_SIGNING_SECRET=...
-ALLOW_LEGACY_BEARER=false
-CMC_MAX_CALLS_PER_MINUTE=9
-```
-
-Recommended v0.5 Bitso settings:
-
-```text
-BITSO_REST_BASE=https://bitso.com/api/v3
-BITSO_WS_URL=wss://ws.bitso.com
 BITSO_CAPTURE_MS=18000
+BITSO_CAPTURE_MAX_MS=45000
+BITSO_MIN_LIVE_TRADES=3
+```
+
+All assets are still captured in parallel. The snapshot reports the actual capture duration and stop reason (`live_trade_target_met`, `max_capture_reached`, etc.).
+
+### 2. Cancellation evidence quality
+
+Cancellation share still uses only matched orders first observed OPEN during the capture and later resolved. New in v0.6: when the capture contains **no completed lifecycle and no live trade**, cancellation-only evidence is explicitly labeled `cancellation_only_context` and receives reduced trap-risk weight. This prevents a quiet market-maker refresh cycle from dominating the trap score.
+
+### 3. REST trade freshness
+
+The last 100 REST trades now receive a `freshness_0_100` score based on both how old the newest trade is and how many hours the sample spans. Old, slow-flow samples receive less influence in `spot_confirmation`.
+
+### 4. Persistent wall pressure
+
+Stable walls are separated from trap evidence. The engine now returns `persistent_wall_pressure` from -100 to +100:
+
+- negative: nearby persistent ask/supply pressure
+- positive: nearby persistent bid/support pressure
+- near zero: balanced/weak
+
+This is directional execution context, **not evidence of manipulation**.
+
+### 5. Existing protections retained
+
+- max 9 CMC calls for the 3-asset core snapshot
+- BTC/AAVE/ADA technicals and relative strength
+- Bitso spread/depth, order-book imbalance, matched lifecycles, wall persistence, sweep/rejection heuristic
+- trap/crowding/spot-confirmation scores
+- venue-price checks where direct USD comparison is possible
+- OAuth and read-only MCP tools remain intact
+- no Bitso private API key and no order execution
+
+## Upgrade
+
+1. Replace the repository contents with this v0.6 folder and commit to `main`.
+2. Keep all existing secrets.
+3. Recommended Render variables:
+
+```text
+CMC_MAX_CALLS_PER_MINUTE=9
+BITSO_CAPTURE_MS=18000
+BITSO_CAPTURE_MAX_MS=45000
+BITSO_MIN_LIVE_TRADES=3
 BITSO_TIMEOUT_MS=12000
 BITSO_PREFERRED_MINORS=mxn,usd,usdc,usdt
 ```
 
-No Bitso credential is required.
+4. After Render redeploys, `/healthz` should show `"version":"0.6.0"`.
+5. Open `/snapshot`, keep the minimum capture at 18 seconds, generate BTC/AAVE/ADA, and copy the result into ChatGPT. Depending on trade activity, the request can take up to ~45 seconds.
 
-## Checks
+## Interpretation rule
 
-```bash
-npm run check
-npm run microstructure:selftest
-```
-
-## Safety rules
-
-- CMC and Bitso are read-only.
-- No private Bitso key is present.
-- Low-confidence microstructure cannot create a trade signal.
-- High trap/crowding risk requires retest or confirmation.
-- Venue microstructure is execution context, not a trade command.
-- Material catalysts should still be validated with primary/authoritative sources before changing real-money positions.
-
-See `UPGRADE-V0.5.md` for deployment steps.
+A high trap score is not proof of spoofing/manipulation/stop hunting. Stable persistent asks can simply represent genuine overhead supply. Cancellation-only samples are down-weighted. Low spot-confirmation confidence cannot create a trade signal.

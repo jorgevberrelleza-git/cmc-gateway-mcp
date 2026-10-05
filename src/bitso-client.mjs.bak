@@ -2,8 +2,6 @@ const REST_BASE = String(process.env.BITSO_REST_BASE || 'https://bitso.com/api/v
 const WS_URL = process.env.BITSO_WS_URL || 'wss://ws.bitso.com';
 const HTTP_TIMEOUT_MS = Math.max(3000, Number(process.env.BITSO_TIMEOUT_MS || 12000));
 const CAPTURE_MS = Math.min(30000, Math.max(6000, Number(process.env.BITSO_CAPTURE_MS || 18000)));
-const CAPTURE_MAX_MS = Math.min(60000, Math.max(CAPTURE_MS, Number(process.env.BITSO_CAPTURE_MAX_MS || 45000)));
-const MIN_LIVE_TRADES = Math.min(20, Math.max(1, Number(process.env.BITSO_MIN_LIVE_TRADES || 3)));
 const BOOK_CACHE_MS = 10 * 60_000;
 const PREFERRED_MINORS = String(process.env.BITSO_PREFERRED_MINORS || 'mxn,usd,usdc,usdt')
   .split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
@@ -20,7 +18,7 @@ async function fetchJson(path, params = {}) {
   const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
-      headers: { 'accept': 'application/json', 'user-agent': 'cmc-gateway-microstructure/0.6.0' },
+      headers: { 'accept': 'application/json', 'user-agent': 'cmc-gateway-microstructure/0.5.0' },
       signal: controller.signal
     });
     const text = await res.text();
@@ -124,22 +122,13 @@ function bookSnapshotFromWs(payload, sent) {
   };
 }
 
-export async function captureBitsoWebSocket(book, options = CAPTURE_MS) {
+export async function captureBitsoWebSocket(book, durationMs = CAPTURE_MS) {
   const { default: WebSocket } = await import('ws');
-  const requestedMin = typeof options === 'number' ? options : options?.minDurationMs;
-  const requestedMax = typeof options === 'object' ? options?.maxDurationMs : null;
-  const requestedTrades = typeof options === 'object' ? options?.minLiveTrades : null;
-  const minDuration = Math.min(30000, Math.max(6000, Number(requestedMin) || CAPTURE_MS));
-  const maxDuration = Math.min(60000, Math.max(minDuration, Number(requestedMax) || CAPTURE_MAX_MS));
-  const minLiveTrades = Math.min(20, Math.max(1, Number(requestedTrades) || MIN_LIVE_TRADES));
+  const duration = Math.min(30000, Math.max(6000, Number(durationMs) || CAPTURE_MS));
   const startedAt = Date.now();
   const result = {
     book,
-    capture_ms: null,
-    requested_min_capture_ms: minDuration,
-    max_capture_ms: maxDuration,
-    adaptive_min_live_trades: minLiveTrades,
-    adaptive_stop_reason: null,
+    capture_ms: duration,
     started_at: new Date(startedAt).toISOString(),
     ended_at: null,
     subscriptions: {},
@@ -160,16 +149,13 @@ export async function captureBitsoWebSocket(book, options = CAPTURE_MS) {
   return await new Promise(resolve => {
     let settled = false;
     let lastSequence = null;
-    let maxTimer = null;
-    let checkTimer = null;
     const observed = new Map();
     const ws = new WebSocket(WS_URL, { handshakeTimeout: Math.min(HTTP_TIMEOUT_MS, 10000) });
 
-    const finish = (reason = 'capture_complete') => {
+    const finish = () => {
       if (settled) return;
       settled = true;
-      if (maxTimer) clearTimeout(maxTimer);
-      if (checkTimer) clearInterval(checkTimer);
+      clearTimeout(timer);
       const endedAt = Date.now();
       for (const [oid, state] of observed.entries()) {
         if (!state.opened_during_capture || state.resolved) continue;
@@ -184,23 +170,12 @@ export async function captureBitsoWebSocket(book, options = CAPTURE_MS) {
           });
         }
       }
-      result.capture_ms = Math.max(0, endedAt - startedAt);
-      result.adaptive_stop_reason = reason;
       result.ended_at = new Date(endedAt).toISOString();
       try { ws.close(1000, 'capture complete'); } catch {}
       resolve(result);
     };
 
-    const canFinishAdaptively = () => {
-      const elapsed = Date.now() - startedAt;
-      if (elapsed < minDuration) return false;
-      return result.stream_trades.length >= minLiveTrades && result.orders_snapshots.length >= 15 && result.diff_events >= 15;
-    };
-
-    maxTimer = setTimeout(() => finish('max_capture_reached'), maxDuration);
-    checkTimer = setInterval(() => {
-      if (canFinishAdaptively()) finish('live_trade_target_met');
-    }, 250);
+    const timer = setTimeout(finish, duration);
 
     ws.on('open', () => {
       for (const type of ['orders', 'trades', 'diff-orders']) {
@@ -219,13 +194,13 @@ export async function captureBitsoWebSocket(book, options = CAPTURE_MS) {
 
       if (data?.type === 'orders' && data?.payload) {
         const snap = bookSnapshotFromWs(data.payload, data.sent);
-        if (result.orders_snapshots.length < 1200) result.orders_snapshots.push(snap);
+        if (result.orders_snapshots.length < 600) result.orders_snapshots.push(snap);
         return;
       }
 
       if (data?.type === 'trades' && Array.isArray(data?.payload)) {
         for (const t of data.payload) {
-          if (result.stream_trades.length >= 2000) break;
+          if (result.stream_trades.length >= 1500) break;
           result.stream_trades.push({
             at: toNum(t?.x) || toNum(data?.sent) || Date.now(),
             price: toNum(t?.r),
@@ -289,7 +264,7 @@ export async function captureBitsoWebSocket(book, options = CAPTURE_MS) {
             if (!state || !state.opened_during_capture || state.resolved) continue;
             state.resolved = true;
             result.lifecycle_counts[status] += 1;
-            if (result.lifecycle_pairs.length < 1000) {
+            if (result.lifecycle_pairs.length < 500) {
               result.lifecycle_pairs.push({
                 oid,
                 outcome: status,
@@ -308,12 +283,12 @@ export async function captureBitsoWebSocket(book, options = CAPTURE_MS) {
 
     ws.on('error', error => result.errors.push(error?.message || String(error)));
     ws.on('close', () => {
-      if (!settled && Date.now() - startedAt > 500) finish('socket_closed');
+      if (!settled && Date.now() - startedAt > 500) finish();
     });
   });
 }
 
-export async function collectBitsoRaw(symbol, { captureMs = CAPTURE_MS, maxCaptureMs = CAPTURE_MAX_MS, minLiveTrades = MIN_LIVE_TRADES } = {}) {
+export async function collectBitsoRaw(symbol, { captureMs = CAPTURE_MS } = {}) {
   const resolved = await resolveBitsoBook(symbol);
   if (!resolved.book) {
     return { available: false, symbol: String(symbol).toUpperCase(), resolved, error: 'No public Bitso order book found for this asset.' };
@@ -322,7 +297,7 @@ export async function collectBitsoRaw(symbol, { captureMs = CAPTURE_MS, maxCaptu
   const [orderBookResult, tradesResult, wsResult] = await Promise.allSettled([
     getBitsoOrderBook(resolved.book),
     getBitsoRecentTrades(resolved.book, 100),
-    captureBitsoWebSocket(resolved.book, { minDurationMs: captureMs, maxDurationMs: maxCaptureMs, minLiveTrades })
+    captureBitsoWebSocket(resolved.book, captureMs)
   ]);
 
   const errors = [];
@@ -343,4 +318,4 @@ export async function collectBitsoRaw(symbol, { captureMs = CAPTURE_MS, maxCaptu
   };
 }
 
-export const BITSO_CONFIG = { REST_BASE, WS_URL, CAPTURE_MS, CAPTURE_MAX_MS, MIN_LIVE_TRADES, PREFERRED_MINORS };
+export const BITSO_CONFIG = { REST_BASE, WS_URL, CAPTURE_MS, PREFERRED_MINORS };

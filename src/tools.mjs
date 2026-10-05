@@ -218,7 +218,7 @@ export function registerCmcTools(server) {
   server.registerTool(
     'bitso_microstructure',
     securedConfig({
-      description: 'Read-only Bitso public microstructure v2 capture for 1-3 assets. Adds matched open-to-resolution order lifecycles, wall persistence, normalized imbalance churn, short-window sweep/rejection heuristics, data-confidence scoring, venue price checks, trap risk, crowding risk and spot confirmation. Heuristics do not prove manipulation.',
+      description: 'Read-only Bitso public microstructure v3 capture for 1-3 assets. Adds adaptive live-trade capture, matched open-to-resolution order lifecycles, cancellation-only evidence down-weighting, REST-flow freshness, persistent-wall directional pressure, normalized imbalance churn, short-window sweep/rejection heuristics, confidence scoring, venue price checks, trap risk, crowding risk and spot confirmation. Heuristics do not prove manipulation.',
       inputSchema: z.object({
         assets: z.array(z.string().min(2).max(12)).min(1).max(3).default(['BTC','AAVE','ADA']),
         capture_seconds: z.number().min(6).max(30).default(18)
@@ -237,7 +237,7 @@ export function registerCmcTools(server) {
   server.registerTool(
     'trading_snapshot',
     securedConfig({
-      description: 'Composite read-only trading snapshot v0.5: CMC regime, derivatives, narratives, quotes, per-asset technicals and explicit relative strength plus Bitso microstructure v2 with matched lifecycle cancellations, wall persistence, sweep/rejection heuristics, venue checks and confidence-aware trap/crowding/spot-confirmation context. Never places orders.',
+      description: 'Composite read-only trading snapshot v0.6: CMC regime, derivatives, narratives, quotes, per-asset technicals and explicit relative strength plus Bitso microstructure v3 with adaptive capture, matched lifecycle quality, REST-flow freshness, persistent-wall directional pressure, sweep/rejection heuristics, venue checks and confidence-aware trap/crowding/spot-confirmation context. Never places orders.',
       inputSchema: z.object({
         assets: z.array(z.string().min(2).max(12)).min(1).max(3).default(['BTC','AAVE','ADA']),
         include_microstructure: z.boolean().default(true),

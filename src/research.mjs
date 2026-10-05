@@ -160,7 +160,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   )];
 
   if (cleanAssets.length < 1) throw new Error('At least one asset is required');
-  if (cleanAssets.length > 3) throw new Error('v0.5 supports up to 3 assets per core snapshot');
+  if (cleanAssets.length > 3) throw new Error('v0.6 supports up to 3 assets per core snapshot');
 
   const resolved = {};
   for (const asset of cleanAssets) {
@@ -213,12 +213,12 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   }
 
   return {
-    snapshot_version: '0.5.0',
+    snapshot_version: '0.6.0',
     generated_at: new Date().toISOString(),
     providers: ['CoinMarketCap MCP via private CMC Gateway', 'Bitso public REST/WebSocket'],
     mode: 'read_only_decision_support',
     execution_enabled: false,
-    snapshot_depth: includeMicrostructure ? 'core_plus_microstructure_v2' : 'core',
+    snapshot_depth: includeMicrostructure ? 'core_plus_microstructure_v3' : 'core',
     assets: cleanAssets,
     cmc_ids: Object.fromEntries(cleanAssets.map(a => [a, resolved[a].id])),
     market,
@@ -232,10 +232,12 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
       high_crowding_requires_retest_or_spot_confirmation: true,
       venue_signal_is_execution_context_not_a_trade_command: true,
       low_microstructure_confidence_cannot_create_a_trade_signal: true,
-      cancellation_metrics_require_matched_lifecycles: true
+      cancellation_metrics_require_matched_lifecycles: true,
+      cancellation_only_samples_are_downweighted: true,
+      persistent_walls_are_directional_context_not_manipulation_claims: true
     },
     deep_research_note: 'Holder metrics, project info and per-asset news are intentionally fetched only on demand via asset_research so the free-tier CMC rate limit is preserved.',
-    usage_note: 'Use CMC as structured market evidence and Bitso microstructure as execution-context evidence. v0.5 adds matched lifecycle cancellation logic, persistence, sweep/rejection heuristics, confidence scoring and explicit relative strength. Validate material catalysts with primary/authoritative sources before changing a real-money position.'
+    usage_note: 'Use CMC as structured market evidence and Bitso microstructure as execution-context evidence. v0.6 adds adaptive live-trade capture, REST-flow freshness scoring, cancellation-only evidence down-weighting, persistent-wall directional pressure, sweep/rejection heuristics, confidence scoring and explicit relative strength. Validate material catalysts with primary/authoritative sources before changing a real-money position.'
   };
 }
 

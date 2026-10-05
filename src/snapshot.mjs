@@ -65,12 +65,12 @@ function page(res) {
 </style>
 </head>
 <body><main class="wrap"><section class="card">
-<h1>Trading Snapshot Console <span class="pill">v0.5.0</span></h1>
-<p>Snapshot CORE de CoinMarketCap + Microstructure Engine v2 de Bitso: persistencia de paredes, ciclos open→cancel/complete emparejados, barridos/rechazos heurísticos, crowding, confirmación spot y confianza de datos. Es solo lectura; no ejecuta órdenes.</p>
+<h1>Trading Snapshot Console <span class="pill">v0.6.0</span></h1>
+<p>Snapshot CORE de CoinMarketCap + Microstructure Engine v3 de Bitso: captura adaptativa de trades, persistencia de paredes, presión de oferta/demanda persistente, ciclos open→cancel/complete emparejados, freshness de trades REST, barridos/rechazos heurísticos, crowding, confirmación spot y confianza de datos. Es solo lectura; no ejecuta órdenes.</p>
 <div class="grid">
 <div><label for="assets">Activos</label><input id="assets" value="BTC,AAVE,ADA" maxlength="40"></div>
 <div><label>Modo</label><input value="CORE + MICRO" readonly></div>
-<div><label for="capture">Captura Bitso (seg)</label><input id="capture" type="number" min="6" max="30" value="18"></div>
+<div><label for="capture">Captura mínima Bitso (seg)</label><input id="capture" type="number" min="6" max="30" value="18"></div>
 <div><label>Microestructura</label><input value="Bitso público · microstructure v2" readonly></div>
 <div class="full"><label for="secret">Gateway login secret</label><input id="secret" type="password" autocomplete="current-password" placeholder="El mismo OAUTH_LOGIN_SECRET de Render"></div>
 </div>
@@ -82,7 +82,7 @@ function page(res) {
 </div>
 <div id="status" class="status"></div>
 <textarea id="output" readonly spellcheck="false" placeholder="Aquí aparecerá el snapshot..."></textarea>
-<div class="note">Protección: máximo ${MAX_PER_10_MIN} snapshots cada 10 minutos por IP. CMC usa como máximo 9 herramientas para BTC/AAVE/ADA. Bitso usa endpoints públicos. Recomendación: 18 s; 30 s para una lectura más robusta. La cancelación v0.5 sólo se puntúa cuando observamos el ciclo de una orden desde OPEN hasta CANCELLED/COMPLETED dentro de la misma captura. Los scores son heurísticos y NO prueban manipulación.</div>
+<div class="note">Protección: máximo ${MAX_PER_10_MIN} snapshots cada 10 minutos por IP. CMC usa como máximo 9 herramientas para BTC/AAVE/ADA. Bitso usa endpoints públicos. Recomendación: mínimo 18 s. v0.6 puede extender automáticamente la captura hasta 45 s si no aparecen suficientes trades en vivo. La cancelación sólo se puntúa con ciclos OPEN→CANCELLED/COMPLETED emparejados y se reduce su peso cuando no hay fills/trades en vivo. Las paredes persistentes se tratan como oferta/soporte, no como prueba de manipulación.</div>
 </section></main>
 <script>
 const $=id=>document.getElementById(id);let snapshot=null;
@@ -103,7 +103,7 @@ $('generate').onclick=async()=>{
  finally{$('generate').disabled=false}
 };
 $('copy').onclick=async()=>{if(!snapshot)return;await navigator.clipboard.writeText(JSON.stringify(snapshot,null,2));setStatus('JSON copiado.','ok')};
-$('copyPrompt').onclick=async()=>{if(!snapshot)return;const prompt='Analiza este Trading Snapshot v0.5 con nuestro Trading Engine actual. Integra estructura técnica, volumen, derivados, sentimiento, macro, catalizadores, relative_strength, concentración, No-Chase, reward/risk y la microestructura de Bitso. Evalúa explícitamente trap_risk, crowding_risk, spot_confirmation, microstructure_confidence, matched_lifecycle cancellation share, wall_persistence, mid_path sweep/rejection y venue_price_check. No afirmes spoofing/manipulación/stop-hunting como hecho: trata esos scores como huellas heurísticas. Da menos peso a cualquier señal con baja confianza de microestructura. Si crowding o trap son altos, exige retest/confirmación y evita stops obvios. Valida noticias materiales con fuentes primarias antes de cambiar una posición. Dime para cada activo MANTENER, COMPRAR, REDUCIR, VENDER o MOVER A USD y registra la decisión para aprendizaje.\n\nTRADING SNAPSHOT V0.5:\n'+JSON.stringify(snapshot,null,2);await navigator.clipboard.writeText(prompt);setStatus('Prompt + snapshot copiados. Pégalos en nuestro chat.','ok')};
+$('copyPrompt').onclick=async()=>{if(!snapshot)return;const prompt='Analiza este Trading Snapshot v0.6 con nuestro Trading Engine actual. Integra estructura técnica, volumen, derivados, sentimiento, macro, catalizadores, relative_strength, concentración, No-Chase, reward/risk y la microestructura de Bitso. Evalúa explícitamente trap_risk, crowding_risk, spot_confirmation, microstructure_confidence, adaptive_capture, rest_trade_freshness, matched_lifecycle evidence_quality, wall_persistence, persistent_wall_pressure, mid_path sweep/rejection y venue_price_check. No afirmes spoofing/manipulación/stop-hunting como hecho: trata esos scores como huellas heurísticas. Da menos peso a cualquier señal con baja confianza de microestructura. Si crowding o trap son altos, exige retest/confirmación y evita stops obvios. Valida noticias materiales con fuentes primarias antes de cambiar una posición. Dime para cada activo MANTENER, COMPRAR, REDUCIR, VENDER o MOVER A USD y registra la decisión para aprendizaje.\n\nTRADING SNAPSHOT V0.6:\n'+JSON.stringify(snapshot,null,2);await navigator.clipboard.writeText(prompt);setStatus('Prompt + snapshot copiados. Pégalos en nuestro chat.','ok')};
 $('clear').onclick=()=>{snapshot=null;$('output').value='';$('copy').disabled=true;$('copyPrompt').disabled=true;setStatus('')};
 </script></body></html>`;
 
