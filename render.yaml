@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: cmc-gateway-mcp
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: CMC_MCP_API_KEY
+        sync: false
+      - key: GATEWAY_BEARER_TOKEN
+        generateValue: true
+      - key: CMC_MAX_CALLS_PER_MINUTE
+        value: "25"
+      - key: CMC_TIMEOUT_MS
+        value: "20000"
