@@ -24,7 +24,7 @@ services:
       - key: BITSO_WS_URL
         value: "wss://ws.bitso.com"
       - key: BITSO_CAPTURE_MS
-        value: "6000"
+        value: "18000"
       - key: BITSO_TIMEOUT_MS
         value: "12000"
       - key: BITSO_PREFERRED_MINORS

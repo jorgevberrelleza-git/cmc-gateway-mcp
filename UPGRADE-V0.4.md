@@ -1,6 +1,6 @@
-# Upgrade to v0.4 — Microstructure Engine
+# Upgrade to v0.5 — Microstructure Engine
 
-v0.4 adds a **read-only Bitso microstructure layer** on top of the existing CoinMarketCap core snapshot.
+v0.5 adds a **read-only Bitso microstructure layer** on top of the existing CoinMarketCap core snapshot.
 
 ## What is new
 
@@ -34,7 +34,7 @@ The microstructure scores are **heuristics**. They can identify footprints consi
 
 ## Upgrade steps on your existing Render service
 
-1. Replace the repository contents with v0.4 and commit to `main`.
+1. Replace the repository contents with v0.5 and commit to `main`.
 2. Let Render auto-deploy.
 3. Keep all existing secrets unchanged:
    - `CMC_MCP_API_KEY`
@@ -47,17 +47,17 @@ The microstructure scores are **heuristics**. They can identify footprints consi
    - `BITSO_CAPTURE_MS=6000`
    - `BITSO_TIMEOUT_MS=12000`
    - `BITSO_PREFERRED_MINORS=mxn,usd,usdc,usdt`
-6. Open `/healthz`; it should show `"version":"0.4.0"`.
+6. Open `/healthz`; it should show `"version":"0.5.0"`.
 7. Open `/snapshot`, keep the Bitso capture at 6 seconds, and generate a snapshot.
 
-No Bitso API key is required in v0.4. It uses public market-data endpoints only and cannot place, modify, or cancel orders.
+No Bitso API key is required in v0.5. It uses public market-data endpoints only and cannot place, modify, or cancel orders.
 
 ## Expected snapshot fields
 
 A successful snapshot should contain:
 
 ```text
-snapshot_version: 0.4.0
+snapshot_version: 0.5.0
 snapshot_depth: core_plus_microstructure
 microstructure.assets.BTC
 microstructure.assets.AAVE
