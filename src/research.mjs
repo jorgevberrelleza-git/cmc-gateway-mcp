@@ -161,7 +161,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   )];
 
   if (cleanAssets.length < 1) throw new Error('At least one asset is required');
-  if (cleanAssets.length > 3) throw new Error('v0.6.1 supports up to 3 assets per core snapshot');
+  if (cleanAssets.length > 3) throw new Error('v0.6.2 supports up to 3 assets per core snapshot');
 
   const resolved = {};
   for (const asset of cleanAssets) {
@@ -218,7 +218,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   const [microstructure, defiFundamentals] = await Promise.all([microstructurePromise, defiFundamentalsPromise]);
 
   return {
-    snapshot_version: '0.6.1',
+    snapshot_version: '0.6.2',
     generated_at: new Date().toISOString(),
     providers: ['CoinMarketCap MCP via private CMC Gateway', 'Bitso public REST/WebSocket', 'DefiLlama Free API'],
     mode: 'read_only_decision_support',
@@ -245,7 +245,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
       missing_defi_metrics_must_not_be_inferred: true
     },
     deep_research_note: 'Holder metrics, project info and per-asset news are fetched on demand via asset_research. Arbitrary DeFi candidates can be checked on demand with defi_protocol_research. The core CMC budget remains unchanged.',
-    usage_note: 'Use CMC as structured market evidence, Bitso as execution-context evidence, and DefiLlama as a fundamental confirmation/degradation layer. v0.6.1 adds cached DeFi TVL/fees/revenue/stablecoin-liquidity context without increasing CMC calls. Defi fundamentals may confirm, degrade or veto a thesis, but never create a BUY by themselves. Validate material catalysts with primary/authoritative sources before changing a real-money position.'
+    usage_note: 'Use CMC as structured market evidence, Bitso as execution-context evidence, and DefiLlama as a fundamental confirmation/degradation layer. v0.6.2 adds cached DeFi TVL/fees/revenue/stablecoin-liquidity context without increasing CMC calls. Defi fundamentals may confirm, degrade or veto a thesis, but never create a BUY by themselves. Validate material catalysts with primary/authoritative sources before changing a real-money position.'
   };
 }
 

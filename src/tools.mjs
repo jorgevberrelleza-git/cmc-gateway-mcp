@@ -257,7 +257,7 @@ export function registerCmcTools(server) {
   server.registerTool(
     'trading_snapshot',
     securedConfig({
-      description: 'Composite read-only trading snapshot v0.6.1: CMC regime, derivatives, narratives, quotes, per-asset technicals and explicit relative strength plus Bitso microstructure v3 with adaptive capture, matched lifecycle quality, REST-flow freshness, persistent-wall directional pressure, sweep/rejection heuristics, venue checks and confidence-aware trap/crowding/spot-confirmation context, plus cached DefiLlama TVL/fees/revenue/stablecoin context for supported DeFi positions. Never places orders.',
+      description: 'Composite read-only trading snapshot v0.6.2: CMC regime, derivatives, narratives, quotes, per-asset technicals and explicit relative strength plus Bitso microstructure v3 with adaptive capture, matched lifecycle quality, REST-flow freshness, persistent-wall directional pressure, sweep/rejection heuristics, venue checks and confidence-aware trap/crowding/spot-confirmation context, plus cached DefiLlama TVL/fees/revenue/stablecoin context for supported DeFi positions. Never places orders.',
       inputSchema: z.object({
         assets: z.array(z.string().min(2).max(12)).min(1).max(3).default(['BTC','AAVE','ADA']),
         include_microstructure: z.boolean().default(true),

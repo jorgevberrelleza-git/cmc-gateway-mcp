@@ -27,6 +27,16 @@ assert.equal(stable.change_7d_pct, 4.76);
 const evalx = evaluateFundamentals({ tvl, fees, revenue: fees, stablecoins: stable });
 assert.equal(evalx.confirmation, 'confirms');
 assert.ok(evalx.fundamental_quality_0_100 >= 65);
+assert.equal(evalx.confidence_0_100, 100);
 assert.equal(evalx.actionability, 'may_confirm_degrade_or_veto_but_never_create_buy_signal');
+
+const partial = evaluateFundamentals({ tvl, fees: null, revenue: null, stablecoins: null });
+assert.equal(partial.confirmation, 'insufficient_data');
+assert.equal(partial.fundamental_quality_0_100, null);
+assert.equal(partial.confidence_0_100, 40);
+
+const scoped = evaluateFundamentals({ tvl, fees, revenue: fees, stablecoins: stable, scopePenalty: 10 });
+assert.equal(scoped.confidence_0_100, 90);
+assert.equal(scoped.scope_penalty_points, 10);
 
 console.log('DefiLlama fundamentals self-test passed');

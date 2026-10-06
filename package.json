@@ -1,6 +1,6 @@
 {
   "name": "cmc-gateway-mcp",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "type": "module",
   "description": "Read-only OAuth-protected CMC + Bitso microstructure v3 + DefiLlama fundamentals v1 gateway with Trading Snapshot console for ChatGPT Plus.",

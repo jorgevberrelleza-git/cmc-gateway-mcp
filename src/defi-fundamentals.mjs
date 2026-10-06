@@ -4,11 +4,15 @@ const CACHE_MS = Math.max(60_000, Number(process.env.DEFILLAMA_CACHE_MS || 21_60
 const ENABLED = String(process.env.DEFILLAMA_ENABLED || 'true').toLowerCase() !== 'false';
 const cache = new Map();
 
-// Deliberately conservative mapping. Add symbols only after confirming the token maps
-// cleanly to one DefiLlama protocol slug. Arbitrary protocols remain available through
-// the standalone defi_protocol_research tool.
+// TVL and fee/revenue adapters do not always use the same DefiLlama slug.
+// For AAVE we prefer the consolidated `aave` protocol for TVL and first try it
+// for flows, then fall back to `aave-v3` if the parent summary endpoint is absent.
+// The fallback scope is explicitly disclosed and lowers confidence slightly.
 const ASSET_PROTOCOL_MAP = new Map([
-  ['AAVE', 'aave']
+  ['AAVE', {
+    protocol_slug: 'aave',
+    flow_slug_candidates: ['aave', 'aave-v3']
+  }]
 ]);
 
 function nowMs() { return Date.now(); }
@@ -16,13 +20,36 @@ function n(v) { const x = Number(v); return Number.isFinite(x) ? x : null; }
 function round(v, d = 2) { return v == null || !Number.isFinite(v) ? null : Number(v.toFixed(d)); }
 function pct(a, b) { return a == null || b == null || b === 0 ? null : ((a / b) - 1) * 100; }
 function clamp(v, lo = 0, hi = 100) { return Math.min(hi, Math.max(lo, v)); }
+function errorInfo(error) {
+  return {
+    message: error?.message || String(error),
+    status: Number.isFinite(Number(error?.status)) ? Number(error.status) : null,
+    url: error?.url || null
+  };
+}
 
 async function cached(key, loader) {
   const item = cache.get(key);
-  if (item && nowMs() - item.at < CACHE_MS) return { value: item.value, cache_hit: true, cached_at: new Date(item.at).toISOString() };
-  const value = await loader();
-  cache.set(key, { at: nowMs(), value });
-  return { value, cache_hit: false, cached_at: null };
+  if (item && nowMs() - item.at < CACHE_MS) {
+    return { value: item.value, cache_hit: true, cached_at: new Date(item.at).toISOString(), error: null };
+  }
+  try {
+    const value = await loader();
+    cache.set(key, { at: nowMs(), value });
+    return { value, cache_hit: false, cached_at: null, error: null };
+  } catch (error) {
+    return { value: null, cache_hit: false, cached_at: null, error: errorInfo(error) };
+  }
+}
+
+async function loadFlowWithFallback(slugs, dataType) {
+  const attempts = [];
+  for (const slug of slugs) {
+    const c = await cached(`${dataType}:${slug}`, () => defillama.feeSummary(slug, dataType));
+    attempts.push({ slug, error: c.error, cache_hit: c.cache_hit });
+    if (!c.error && c.value) return { ...c, slug_used: slug, attempts };
+  }
+  return { value: null, cache_hit: false, cached_at: null, error: attempts.at(-1)?.error || { message: 'No DefiLlama flow slug resolved', status: null, url: null }, slug_used: null, attempts };
 }
 
 function getTvlSeries(protocol) {
@@ -53,7 +80,7 @@ export function summarizeTvl(protocol, currentTvlFallback = null, nowSec = Math.
     change_7d_pct: round(pct(current, p7?.value), 2),
     change_30d_pct: round(pct(current, p30?.value), 2),
     history_points: series.length,
-    source: series.length ? 'protocol_history' : 'current_tvl_only'
+    source: series.length ? 'protocol_history' : current != null ? 'current_tvl_only' : 'unavailable'
   };
 }
 
@@ -127,7 +154,7 @@ function scoreMetric(v, { pos2, pos1, neg1, neg2, w }) {
   return { delta: 0, counted: true };
 }
 
-export function evaluateFundamentals({ tvl, fees, revenue, stablecoins }) {
+export function evaluateFundamentals({ tvl, fees, revenue, stablecoins, scopePenalty = 0 }) {
   let score = 50, counted = 0;
   const details = [];
   const metrics = [
@@ -143,12 +170,15 @@ export function evaluateFundamentals({ tvl, fees, revenue, stablecoins }) {
     if (s.counted) counted++;
     details.push({ metric: name, value, contribution: round(s.delta, 2), counted: s.counted });
   }
+  const rawConfidence = Math.round((counted/5)*100);
+  const confidence = Math.max(0, rawConfidence - Math.max(0, Number(scopePenalty) || 0));
   if (counted < 3) {
     return {
       fundamental_quality_0_100: null,
       confirmation: 'insufficient_data',
-      confidence_0_100: Math.round((counted/5)*100),
+      confidence_0_100: confidence,
       components: details,
+      scope_penalty_points: Math.max(0, Number(scopePenalty) || 0),
       actionability: 'context_only_no_trade_signal'
     };
   }
@@ -156,46 +186,86 @@ export function evaluateFundamentals({ tvl, fees, revenue, stablecoins }) {
   return {
     fundamental_quality_0_100: final,
     confirmation: final >= 65 ? 'confirms' : final <= 35 ? 'contradicts' : 'neutral',
-    confidence_0_100: Math.round((counted/5)*100),
+    confidence_0_100: confidence,
     components: details,
+    scope_penalty_points: Math.max(0, Number(scopePenalty) || 0),
     actionability: 'may_confirm_degrade_or_veto_but_never_create_buy_signal'
   };
 }
 
-export async function buildDefiProtocolResearch(slug, { includeStablecoinContext = true } = {}) {
+export async function buildDefiProtocolResearch(slug, { includeStablecoinContext = true, flowSlugCandidates = null } = {}) {
   if (!ENABLED) return { available: false, reason: 'defillama_disabled' };
   const clean = String(slug || '').trim().toLowerCase();
   if (!clean) throw new Error('protocol slug is required');
+  const flowSlugs = Array.isArray(flowSlugCandidates) && flowSlugCandidates.length
+    ? [...new Set(flowSlugCandidates.map(x => String(x || '').trim().toLowerCase()).filter(Boolean))]
+    : [clean];
 
-  const protocolC = await cached(`protocol:${clean}`, () => defillama.protocol(clean));
-  const tvlC = await cached(`tvl:${clean}`, () => defillama.currentTvl(clean));
-  const feesC = await cached(`fees:${clean}`, () => defillama.feeSummary(clean, 'dailyFees'));
-  const revenueC = await cached(`revenue:${clean}`, () => defillama.feeSummary(clean, 'dailyRevenue'));
-  let stablesC = null;
-  if (includeStablecoinContext) stablesC = await cached('stablecoincharts:all', () => defillama.stablecoinChartAll());
+  const [protocolC, tvlC] = await Promise.all([
+    cached(`protocol:${clean}`, () => defillama.protocol(clean)),
+    cached(`tvl:${clean}`, () => defillama.currentTvl(clean))
+  ]);
+  const [feesC, revenueC] = await Promise.all([
+    loadFlowWithFallback(flowSlugs, 'dailyFees'),
+    loadFlowWithFallback(flowSlugs, 'dailyRevenue')
+  ]);
+  const stablesC = includeStablecoinContext
+    ? await cached('stablecoincharts:all', () => defillama.stablecoinChartAll())
+    : null;
 
-  const tvl = summarizeTvl(protocolC.value, tvlC.value);
-  const fees = summarizeFlow(feesC.value);
-  const revenue = summarizeFlow(revenueC.value);
-  const stablecoins = stablesC ? summarizeStablecoinContext(stablesC.value) : null;
-  const evaluation = evaluateFundamentals({ tvl, fees, revenue, stablecoins });
+  const tvl = (protocolC.value || tvlC.value != null) ? summarizeTvl(protocolC.value, tvlC.value) : null;
+  const fees = feesC.value ? summarizeFlow(feesC.value) : null;
+  const revenue = revenueC.value ? summarizeFlow(revenueC.value) : null;
+  const stablecoins = stablesC?.value ? summarizeStablecoinContext(stablesC.value) : null;
+
+  const flowSlugUsed = feesC.slug_used || revenueC.slug_used || null;
+  const mixedScope = Boolean(flowSlugUsed && flowSlugUsed !== clean);
+  const evaluation = evaluateFundamentals({
+    tvl,
+    fees,
+    revenue,
+    stablecoins,
+    scopePenalty: mixedScope ? 10 : 0
+  });
+
+  const successfulFamilies = [tvl, fees, revenue, stablecoins].filter(Boolean).length;
+  const errors = {
+    protocol: protocolC.error,
+    current_tvl: tvlC.error,
+    fees: feesC.error,
+    revenue: revenueC.error,
+    stablecoins: stablesC?.error || null
+  };
 
   return {
-    available: true,
+    available: successfulFamilies > 0,
     provider: 'DefiLlama Free API',
     protocol_slug: clean,
+    flow_slug_used: flowSlugUsed,
+    flow_scope: mixedScope ? `${flowSlugUsed}_fallback_not_consolidated_parent` : flowSlugUsed || clean,
+    flow_slug_attempts: {
+      fees: feesC.attempts,
+      revenue: revenueC.attempts
+    },
     name: protocolC.value?.name || feesC.value?.name || revenueC.value?.name || clean,
     symbol: protocolC.value?.symbol || feesC.value?.symbol || revenueC.value?.symbol || null,
     category: protocolC.value?.category || feesC.value?.category || revenueC.value?.category || null,
-    chains: protocolC.value?.chains || feesC.value?.chains || [],
+    chains: protocolC.value?.chains || feesC.value?.chains || revenueC.value?.chains || [],
     tvl,
     fees,
     revenue,
     stablecoin_liquidity_context: stablecoins,
     evaluation,
+    endpoint_errors: errors,
+    coverage: {
+      successful_metric_families: successfulFamilies,
+      requested_metric_families: includeStablecoinContext ? 4 : 3,
+      partial_data_allowed: true
+    },
     cache: {
       ttl_ms: CACHE_MS,
       protocol_cache_hit: protocolC.cache_hit,
+      tvl_cache_hit: tvlC.cache_hit,
       fees_cache_hit: feesC.cache_hit,
       revenue_cache_hit: revenueC.cache_hit,
       stablecoins_cache_hit: stablesC?.cache_hit ?? null
@@ -204,6 +274,7 @@ export async function buildDefiProtocolResearch(slug, { includeStablecoinContext
       no_api_key_required: true,
       fundamentals_are_confirmation_context_not_entry_trigger: true,
       stablecoin_context_is_global_not_aave_specific: true,
+      mixed_scope_penalizes_confidence: true,
       missing_metrics_must_not_be_inferred: true
     }
   };
@@ -213,10 +284,13 @@ export async function buildDefiFundamentalsForAssets(assets = []) {
   if (!ENABLED) return { available: false, reason: 'defillama_disabled' };
   const out = {};
   for (const asset of assets.map(x=>String(x||'').toUpperCase())) {
-    const slug = ASSET_PROTOCOL_MAP.get(asset);
-    if (!slug) continue;
+    const cfg = ASSET_PROTOCOL_MAP.get(asset);
+    if (!cfg) continue;
     try {
-      out[asset] = await buildDefiProtocolResearch(slug, { includeStablecoinContext: true });
+      out[asset] = await buildDefiProtocolResearch(cfg.protocol_slug, {
+        includeStablecoinContext: true,
+        flowSlugCandidates: cfg.flow_slug_candidates
+      });
     } catch (error) {
       out[asset] = { available: false, error: error?.message || String(error) };
     }
@@ -226,8 +300,8 @@ export async function buildDefiFundamentalsForAssets(assets = []) {
     provider: 'DefiLlama Free API',
     generated_at: new Date().toISOString(),
     assets: out,
-    supported_asset_map: Object.fromEntries(ASSET_PROTOCOL_MAP),
-    note: Object.keys(out).length ? 'Fundamentals are a confirmation/degradation layer only and cannot independently create a BUY.' : 'No supported DeFi protocol asset in this snapshot.',
+    supported_asset_map: Object.fromEntries([...ASSET_PROTOCOL_MAP].map(([symbol, cfg]) => [symbol, cfg.protocol_slug])),
+    note: Object.keys(out).length ? 'Fundamentals are a confirmation/degradation layer only and cannot independently create a BUY. v0.6.2 tolerates partial endpoint failure and can use an explicitly disclosed flow-slug fallback.' : 'No supported DeFi protocol asset in this snapshot.',
     config: { ...defillamaConfig(), cache_ms: CACHE_MS, enabled: ENABLED }
   };
 }

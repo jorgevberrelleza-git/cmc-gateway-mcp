@@ -1,4 +1,4 @@
-# CMC Gateway MCP v0.6.1
+# CMC Gateway MCP v0.6.2
 
 Read-only OAuth-protected trading-research gateway for the Asesor Crypto workflow.
 
@@ -12,7 +12,7 @@ The service is decision support only. `execution_enabled` is false and no exchan
 
 ## Recommended tool
 
-Use `trading_snapshot` for the normal BTC/AAVE/ADA review. v0.6.1 keeps the v0.6 CMC/Bitso core and adds `defi_fundamentals` for supported DeFi positions (currently AAVE).
+Use `trading_snapshot` for the normal BTC/AAVE/ADA review. v0.6.2 keeps the v0.6 CMC/Bitso core and adds `defi_fundamentals` for supported DeFi positions (currently AAVE).
 
 Use `defi_protocol_research` only when the Opportunity Scanner identifies a new DeFi candidate that deserves fundamental due diligence.
 
@@ -48,7 +48,7 @@ The 6-hour cache is intentional because protocol fundamentals generally move muc
 - Keep `CMC_MCP_API_KEY`, `OAUTH_LOGIN_SECRET`, and `OAUTH_SIGNING_SECRET` only in Render environment variables.
 - Keep `ALLOW_LEGACY_BEARER=false` after OAuth works.
 - Do not enable insecure public access.
-- Bitso access is public/read-only; v0.6.1 requires no Bitso private API key.
+- Bitso access is public/read-only; v0.6.2 requires no Bitso private API key.
 - Future exchange execution must remain a separate component with no withdrawal permission.
 
 ## Deploy
@@ -56,3 +56,7 @@ The 6-hour cache is intentional because protocol fundamentals generally move muc
 Deploy the Docker service exactly as v0.6. After Render finishes, open `/healthz`; it should report `0.6.1`. Then open `/snapshot` and generate BTC,AAVE,ADA.
 
 See `UPGRADE-V0.6.1.md` for the incremental change.
+
+
+## v0.6.2 hotfix
+DefiLlama metric families are now fault-isolated. AAVE tries the consolidated `aave` flow slug first and falls back to `aave-v3` when needed; any fallback scope is disclosed and confidence-penalized. See `UPGRADE-V0.6.2.md`.

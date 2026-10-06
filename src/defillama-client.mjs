@@ -1,6 +1,16 @@
 const BASE = String(process.env.DEFILLAMA_BASE_URL || 'https://api.llama.fi').replace(/\/$/, '');
 const TIMEOUT_MS = Math.max(3000, Number(process.env.DEFILLAMA_TIMEOUT_MS || 12000));
 
+export class DefiLlamaHttpError extends Error {
+  constructor(status, url, body = '') {
+    super(`DefiLlama HTTP ${status}${body ? `: ${String(body).slice(0, 180)}` : ''}`);
+    this.name = 'DefiLlamaHttpError';
+    this.status = status;
+    this.url = String(url);
+    this.body = String(body || '').slice(0, 500);
+  }
+}
+
 async function getJson(path, params = {}) {
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(params || {})) {
@@ -15,13 +25,13 @@ async function getJson(path, params = {}) {
       method: 'GET',
       headers: {
         accept: 'application/json',
-        'user-agent': 'cmc-gateway-mcp/0.6.1'
+        'user-agent': 'cmc-gateway-mcp/0.6.2'
       },
       signal: controller.signal
     });
     if (!r.ok) {
       const body = await r.text().catch(() => '');
-      throw new Error(`DefiLlama HTTP ${r.status}${body ? `: ${body.slice(0, 180)}` : ''}`);
+      throw new DefiLlamaHttpError(r.status, url, body);
     }
     return await r.json();
   } finally {
