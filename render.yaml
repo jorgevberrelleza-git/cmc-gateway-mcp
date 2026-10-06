@@ -33,3 +33,11 @@ services:
         value: "12000"
       - key: BITSO_PREFERRED_MINORS
         value: "mxn,usd,usdc,usdt"
+      - key: DEFILLAMA_ENABLED
+        value: "true"
+      - key: DEFILLAMA_BASE_URL
+        value: "https://api.llama.fi"
+      - key: DEFILLAMA_TIMEOUT_MS
+        value: "12000"
+      - key: DEFILLAMA_CACHE_MS
+        value: "21600000"

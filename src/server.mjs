@@ -18,10 +18,10 @@ const oauth = createOAuthConfig();
 
 function makeServer() {
   const server = new McpServer(
-    { name: 'cmc-gateway', version: '0.6.0' },
+    { name: 'cmc-gateway', version: '0.6.1' },
     {
       capabilities: { tools: {} },
-      instructions: 'Read-only CoinMarketCap + Bitso microstructure gateway. Never places trades or performs exchange writes. Use trading_snapshot for combined market/technical/microstructure context; microstructure heuristics never prove manipulation.'
+      instructions: 'Read-only CoinMarketCap + Bitso microstructure + DefiLlama fundamentals gateway. Never places trades or performs exchange writes. Use trading_snapshot for combined market/technical/microstructure/fundamental context; microstructure heuristics never prove manipulation and DeFi fundamentals cannot create a BUY alone.'
     }
   );
   registerCmcTools(server);
@@ -71,7 +71,7 @@ const httpServer = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'cmc-gateway-mcp',
-      version: '0.6.0',
+      version: '0.6.1',
       oauth: true,
       issuer: oauth.issuer,
       resource: oauth.resource,
@@ -109,7 +109,7 @@ const httpServer = http.createServer(async (req, res) => {
 });
 
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.error(`CMC Gateway MCP v0.6.0 listening on http://0.0.0.0:${PORT}/mcp`);
+  console.error(`CMC Gateway MCP v0.6.1 listening on http://0.0.0.0:${PORT}/mcp`);
   console.error(`Public OAuth issuer: ${oauth.issuer}`);
   console.error(`Protected resource: ${oauth.resource}`);
   console.error(`Health check: http://0.0.0.0:${PORT}/healthz`);

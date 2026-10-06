@@ -1,5 +1,6 @@
 import { callCmcTool, compactToolResult, extractFirstCmcId } from './cmc-client.mjs';
 import { buildMicrostructureSnapshot } from './microstructure.mjs';
+import { buildDefiFundamentalsForAssets } from './defi-fundamentals.mjs';
 
 async function pass(tool, args = {}) {
   return compactToolResult(await callCmcTool(tool, args));
@@ -160,7 +161,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   )];
 
   if (cleanAssets.length < 1) throw new Error('At least one asset is required');
-  if (cleanAssets.length > 3) throw new Error('v0.6 supports up to 3 assets per core snapshot');
+  if (cleanAssets.length > 3) throw new Error('v0.6.1 supports up to 3 assets per core snapshot');
 
   const resolved = {};
   for (const asset of cleanAssets) {
@@ -193,32 +194,36 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   const assetTechnicals = Object.fromEntries(technicalEntries);
   const relativeStrength = buildRelativeStrength(quotes, cleanAssets);
 
-  let microstructure = null;
-  if (includeMicrostructure) {
-    try {
-      microstructure = await buildMicrostructureSnapshot({
+  const microstructurePromise = includeMicrostructure
+    ? buildMicrostructureSnapshot({
         assets: cleanAssets,
         quotes,
         technicals: assetTechnicals,
         market,
         captureMs
-      });
-    } catch (error) {
-      microstructure = {
+      }).catch(error => ({
         isError: true,
         error: error?.message || String(error),
         note: 'CMC core data is still valid. Do not infer manipulation from a failed Bitso microstructure capture.'
-      };
-    }
-  }
+      }))
+    : Promise.resolve(null);
+
+  const defiFundamentalsPromise = buildDefiFundamentalsForAssets(cleanAssets).catch(error => ({
+    available: false,
+    isError: true,
+    error: error?.message || String(error),
+    note: 'CMC/Bitso data remains valid. Missing DefiLlama fundamentals must not be inferred.'
+  }));
+
+  const [microstructure, defiFundamentals] = await Promise.all([microstructurePromise, defiFundamentalsPromise]);
 
   return {
-    snapshot_version: '0.6.0',
+    snapshot_version: '0.6.1',
     generated_at: new Date().toISOString(),
-    providers: ['CoinMarketCap MCP via private CMC Gateway', 'Bitso public REST/WebSocket'],
+    providers: ['CoinMarketCap MCP via private CMC Gateway', 'Bitso public REST/WebSocket', 'DefiLlama Free API'],
     mode: 'read_only_decision_support',
     execution_enabled: false,
-    snapshot_depth: includeMicrostructure ? 'core_plus_microstructure_v3' : 'core',
+    snapshot_depth: includeMicrostructure ? 'core_plus_microstructure_v3_plus_defi_fundamentals_v1' : 'core_plus_defi_fundamentals_v1',
     assets: cleanAssets,
     cmc_ids: Object.fromEntries(cleanAssets.map(a => [a, resolved[a].id])),
     market,
@@ -226,6 +231,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
     asset_technicals: assetTechnicals,
     relative_strength: relativeStrength,
     microstructure,
+    defi_fundamentals: defiFundamentals,
     guardrails: {
       no_manipulation_claim_without_evidence: true,
       high_trap_risk_requires_confirmation: true,
@@ -234,10 +240,12 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
       low_microstructure_confidence_cannot_create_a_trade_signal: true,
       cancellation_metrics_require_matched_lifecycles: true,
       cancellation_only_samples_are_downweighted: true,
-      persistent_walls_are_directional_context_not_manipulation_claims: true
+      persistent_walls_are_directional_context_not_manipulation_claims: true,
+      defi_fundamentals_cannot_create_buy_signal_alone: true,
+      missing_defi_metrics_must_not_be_inferred: true
     },
-    deep_research_note: 'Holder metrics, project info and per-asset news are intentionally fetched only on demand via asset_research so the free-tier CMC rate limit is preserved.',
-    usage_note: 'Use CMC as structured market evidence and Bitso microstructure as execution-context evidence. v0.6 adds adaptive live-trade capture, REST-flow freshness scoring, cancellation-only evidence down-weighting, persistent-wall directional pressure, sweep/rejection heuristics, confidence scoring and explicit relative strength. Validate material catalysts with primary/authoritative sources before changing a real-money position.'
+    deep_research_note: 'Holder metrics, project info and per-asset news are fetched on demand via asset_research. Arbitrary DeFi candidates can be checked on demand with defi_protocol_research. The core CMC budget remains unchanged.',
+    usage_note: 'Use CMC as structured market evidence, Bitso as execution-context evidence, and DefiLlama as a fundamental confirmation/degradation layer. v0.6.1 adds cached DeFi TVL/fees/revenue/stablecoin-liquidity context without increasing CMC calls. Defi fundamentals may confirm, degrade or veto a thesis, but never create a BUY by themselves. Validate material catalysts with primary/authoritative sources before changing a real-money position.'
   };
 }
 

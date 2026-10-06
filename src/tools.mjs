@@ -2,6 +2,7 @@ import * as z from 'zod/v4';
 import { callCmcTool, compactToolResult, listUpstreamTools } from './cmc-client.mjs';
 import { buildAssetResearch, buildMarketReport, buildTradingSnapshot } from './research.mjs';
 import { buildMicrostructureSnapshot } from './microstructure.mjs';
+import { buildDefiProtocolResearch } from './defi-fundamentals.mjs';
 
 const OFFICIAL_TOOLS = new Set([
   'search_cryptos',
@@ -215,6 +216,25 @@ export function registerCmcTools(server) {
       }
     }
   );
+
+  server.registerTool(
+    'defi_protocol_research',
+    securedConfig({
+      description: 'Read-only DefiLlama fundamental sidecar for one DeFi protocol slug. Returns TVL momentum, fees, revenue, global stablecoin-liquidity context, data confidence and a confirmation/neutral/contradiction assessment. This tool can confirm, degrade or veto a thesis but cannot independently create a BUY signal.',
+      inputSchema: z.object({
+        protocol_slug: z.string().min(1).max(120),
+        include_stablecoin_context: z.boolean().default(true)
+      })
+    }),
+    async ({ protocol_slug, include_stablecoin_context }) => {
+      try {
+        return resultAsText(await buildDefiProtocolResearch(protocol_slug, { includeStablecoinContext: include_stablecoin_context }));
+      } catch (error) {
+        return { isError: true, content: [{ type: 'text', text: `defi_protocol_research failed: ${error?.message || String(error)}` }] };
+      }
+    }
+  );
+
   server.registerTool(
     'bitso_microstructure',
     securedConfig({
@@ -237,7 +257,7 @@ export function registerCmcTools(server) {
   server.registerTool(
     'trading_snapshot',
     securedConfig({
-      description: 'Composite read-only trading snapshot v0.6: CMC regime, derivatives, narratives, quotes, per-asset technicals and explicit relative strength plus Bitso microstructure v3 with adaptive capture, matched lifecycle quality, REST-flow freshness, persistent-wall directional pressure, sweep/rejection heuristics, venue checks and confidence-aware trap/crowding/spot-confirmation context. Never places orders.',
+      description: 'Composite read-only trading snapshot v0.6.1: CMC regime, derivatives, narratives, quotes, per-asset technicals and explicit relative strength plus Bitso microstructure v3 with adaptive capture, matched lifecycle quality, REST-flow freshness, persistent-wall directional pressure, sweep/rejection heuristics, venue checks and confidence-aware trap/crowding/spot-confirmation context, plus cached DefiLlama TVL/fees/revenue/stablecoin context for supported DeFi positions. Never places orders.',
       inputSchema: z.object({
         assets: z.array(z.string().min(2).max(12)).min(1).max(3).default(['BTC','AAVE','ADA']),
         include_microstructure: z.boolean().default(true),
