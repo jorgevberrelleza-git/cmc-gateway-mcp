@@ -116,12 +116,12 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
     const clauses = [];
     const args = [];
-    if (from) { args.push(from); clauses.push(`created_at >= ${args.length}`); }
-    if (to) { args.push(to); clauses.push(`created_at <= ${args.length}`); }
+    if (from) { args.push(from); clauses.push(`created_at >= $${args.length}`); }
+    if (to) { args.push(to); clauses.push(`created_at <= $${args.length}`); }
     args.push(safeLimit);
     const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
     const result = await pool.query(
-      `select * from learning_decisions ${where} order by created_at asc limit ${args.length}`,
+      `select * from learning_decisions ${where} order by created_at asc limit $${args.length}`,
       args
     );
     return result.rows;
@@ -462,12 +462,12 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
     const clauses = [];
     const args = [];
-    if (from) { args.push(from); clauses.push(`detected_at >= ${args.length}`); }
-    if (to) { args.push(to); clauses.push(`detected_at <= ${args.length}`); }
+    if (from) { args.push(from); clauses.push(`detected_at >= $${args.length}`); }
+    if (to) { args.push(to); clauses.push(`detected_at <= $${args.length}`); }
     args.push(safeLimit);
     const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
     const result = await pool.query(
-      `select * from learning_watchdog_events ${where} order by detected_at asc limit ${args.length}`,
+      `select * from learning_watchdog_events ${where} order by detected_at asc limit $${args.length}`,
       args
     );
     return result.rows;
