@@ -81,7 +81,12 @@ const baseMacro = {
   shock_risk: 'medium',
   observed_at: '2026-10-13T06:00:00Z',
   evidence: ['rates and USD unfavorable', 'risk assets weak'],
-  source_quality: 'primary_reuters'
+  source_quality: 'primary_reuters',
+  verification_status: 'verified',
+  sources: [
+    { name: 'Federal Reserve', url: 'https://www.federalreserve.gov/example', kind: 'primary', published_at: '2026-10-13T05:30:00Z' },
+    { name: 'Reuters', url: 'https://www.reuters.com/example', kind: 'reuters', published_at: '2026-10-13T05:45:00Z' }
+  ]
 };
 
 const aiKillSwitch = validateReasoningProposal({
@@ -204,6 +209,62 @@ const staleMacro = validateReasoningProposal({
 }, packet);
 assert.equal(staleMacro.ok, false);
 assert.ok(staleMacro.errors.includes('macro_context_stale_or_unanchored'));
+
+const unverifiedAction = validateReasoningProposal({
+  asset: 'BTC',
+  action: 'BUY',
+  thesis: { reason: 'macro unavailable', confirmations: [], invalidations: [] },
+  evidence_families: ['structure','macro','flow'],
+  reward_risk: 3,
+  entry_price_usd: 78000,
+  invalidation_price_usd: 74000,
+  target_price_usd: 90000,
+  reduction_pct: null,
+  risk_pct: 0.005,
+  macro_context: {
+    regime: 'unknown',
+    liquidity: 'unknown',
+    shock_risk: 'unknown',
+    observed_at: '2026-10-13T06:00:00Z',
+    evidence: [],
+    source_quality: 'unavailable',
+    verification_status: 'insufficient',
+    sources: []
+  },
+  data_confidence: 60,
+  source_conflict: false,
+  kill_switch: false
+}, buyPacket);
+assert.equal(unverifiedAction.ok, false);
+assert.ok(unverifiedAction.errors.includes('macro_context_not_verified_for_position_change'));
+assert.ok(unverifiedAction.errors.includes('position_change_requires_two_macro_sources'));
+
+const holdOnMissingMacro = validateReasoningProposal({
+  asset: 'BTC',
+  action: 'HOLD',
+  thesis: { reason: 'macro unavailable so no action', confirmations: [], invalidations: [] },
+  evidence_families: [],
+  reward_risk: null,
+  entry_price_usd: null,
+  invalidation_price_usd: null,
+  target_price_usd: null,
+  reduction_pct: null,
+  risk_pct: null,
+  macro_context: {
+    regime: 'unknown',
+    liquidity: 'unknown',
+    shock_risk: 'unknown',
+    observed_at: '2026-10-13T06:00:00Z',
+    evidence: [],
+    source_quality: 'unavailable',
+    verification_status: 'insufficient',
+    sources: []
+  },
+  data_confidence: 40,
+  source_conflict: true,
+  kill_switch: false
+}, packet);
+assert.equal(holdOnMissingMacro.ok, true);
 
 const mock = createReasoningProvider({ provider: 'mock' });
 const mocked = await mock.reason(packet);
