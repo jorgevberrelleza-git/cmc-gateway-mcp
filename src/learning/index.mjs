@@ -18,4 +18,4 @@ export { REASONING_OUTPUT_SCHEMA, reasoningSystemInstructions } from './reasonin
 export { buildOpenAIRequest, createReasoningProvider } from './reasoning-provider.mjs';
 export { validateReasoningProposal, buildDeterministicPaperOrder, assessReasoningProposal } from './reasoning-bridge.mjs';
 export { validateShadowRuntimeConfig } from './runtime-config.mjs';
-export { summarizeReasoningCost, buildRuntimeHealth } from './runtime-telemetry.mjs';
+export { summarizeReasoningCost, buildRuntimeHealth, monthWindowUtc, estimateReasoningRequestCeilingUsd, evaluateMonthlyReasoningBudget } from './runtime-telemetry.mjs';
