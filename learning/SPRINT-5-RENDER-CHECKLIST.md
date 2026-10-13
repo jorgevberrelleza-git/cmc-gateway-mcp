@@ -9,7 +9,10 @@ No action in this checklist has been applied to Render yet.
 - [ ] Mock end-to-end shadow dry run green.
 - [ ] Configuration checker green with intended production environment values.
 - [ ] Provider mock canary green.
-- [ ] Current monthly API cost assumptions reviewed.
+- [ ] Total monthly budget approved.
+- [ ] Planned fixed infrastructure allocation is within that budget.
+- [ ] Monthly AI budget and reasoning-run limit configured.
+- [ ] Current API/model/web-search cost assumptions reviewed.
 - [ ] Backup/restore capability selected.
 - [ ] No Bitso private credentials present.
 - [ ] Real execution flags absent/false.
@@ -53,7 +56,8 @@ Only after stable burn-in:
 - select a reasoning model explicitly;
 - enable event-driven reasoning for a limited number of queue items;
 - inspect accepted/rejected decisions and citations;
-- set a cost ceiling operationally;
+- keep the application-level monthly AI budget guard active;
+- keep the monthly reasoning-run limit active;
 - keep every action paper-only.
 
 ## Explicitly out of scope
