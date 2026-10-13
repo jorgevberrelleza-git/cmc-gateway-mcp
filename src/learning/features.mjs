@@ -50,8 +50,58 @@ function normalizeQuoteRowsPayload(p) {
 function quoteRows(snapshot) {
   return normalizeQuoteRowsPayload(parsePayload(snapshot?.quotes));
 }
+function findAssetQuote(value, symbol, cmcId, depth = 0) {
+  if (value == null || depth > 10) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findAssetQuote(item, symbol, cmcId, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value !== 'object') return null;
+
+  const objectSymbol = String(value.symbol || value.asset_symbol || '').toUpperCase();
+  const objectId = value.id == null ? null : String(value.id);
+  if (objectSymbol === symbol || (cmcId && objectId === String(cmcId))) {
+    const flat = flattenQuoteAsset(value);
+    if (flat && Number.isFinite(Number(flat.price ?? flat.price_usd))) {
+      return { ...flat, symbol };
+    }
+  }
+
+  const direct = value[symbol] ?? (cmcId ? value[String(cmcId)] : undefined);
+  if (direct && typeof direct === 'object') {
+    const flat = flattenQuoteAsset(direct);
+    if (flat && Number.isFinite(Number(flat.price ?? flat.price_usd))) {
+      return { ...flat, symbol };
+    }
+    const nested = findAssetQuote(direct, symbol, cmcId, depth + 1);
+    if (nested) return nested;
+  }
+
+  for (const child of Object.values(value)) {
+    const found = findAssetQuote(child, symbol, cmcId, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 function quoteMap(snapshot) {
-  return Object.fromEntries(quoteRows(snapshot).map(row => [String(row.symbol || '').toUpperCase(), row]));
+  const requested = (snapshot?.assets || []).map(x => String(x).toUpperCase());
+  const out = {};
+  for (const row of quoteRows(snapshot)) {
+    const symbol = String(row?.symbol || '').toUpperCase();
+    if (requested.includes(symbol)) out[symbol] = row;
+  }
+
+  const payload = parsePayload(snapshot?.quotes);
+  for (const symbol of requested) {
+    if (out[symbol]) continue;
+    const found = findAssetQuote(payload, symbol, snapshot?.cmc_ids?.[symbol]);
+    if (found) out[symbol] = found;
+  }
+  return out;
 }
 
 function n(value) {
