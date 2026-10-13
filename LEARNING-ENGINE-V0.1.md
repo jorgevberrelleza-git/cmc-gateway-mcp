@@ -69,6 +69,23 @@ This branch builds the 24/7 shadow-learning layer without changing the productio
 - The hourly cycle now includes the reasoner between collection and paper-fill synchronization.
 - Real-money execution remains impossible.
 
+## Sprint 5 — shadow go-live readiness
+
+- Deployment-grade environment validation with a redacted configuration fingerprint.
+- Explicit rejection of Bitso private/trading secrets in the shadow runtime.
+- Explicit rejection of any enabled real-execution flag.
+- Canonical idempotent PostgreSQL migration runner with checksum drift detection.
+- Bounded reasoning retries to prevent infinite paid retry loops.
+- Runtime-cycle telemetry for hourly orchestration.
+- Health monitoring for stale snapshots/marks, queue backlog and reasoning-error bursts.
+- Cost telemetry with externally configured vendor rates; no vendor price is hard-coded.
+- Storage/retention reporting without automatic deletion.
+- Mock provider canary that makes no network call by default.
+- Full synthetic end-to-end shadow dry run using PostgreSQL and mock reasoning.
+- Automated shadow go-live readiness gate.
+- Backup/retention policy and Render deployment checklist prepared but not applied.
+- Real-money execution remains impossible.
+
 ## Safety invariants
 
 1. No exchange writes and no Bitso private credentials.
@@ -92,6 +109,14 @@ This branch builds the 24/7 shadow-learning layer without changing the productio
 - `npm run learning:watchdog`
 - `npm run learning:report`
 - `npm run learning:hourly`
+- `npm run learning:migrate`
+- `npm run learning:config:check`
+- `npm run learning:provider:canary`
+- `npm run learning:health`
+- `npm run learning:cost`
+- `npm run learning:retention:report`
+- `npm run learning:shadow:dryrun`
+- `npm run learning:readiness`
 
 ## Environment
 
@@ -116,6 +141,7 @@ Reasoning bridge:
 - `LEARNING_REASONING_MAX_OUTPUT_TOKENS=1800`.
 - `LEARNING_REASONING_MAX_EVENT_AGE_HOURS=6`.
 - `LEARNING_REASONING_STALE_MINUTES=30`.
+- `LEARNING_REASONING_MAX_ATTEMPTS=3`.
 - `LEARNING_MACRO_MAX_AGE_HOURS=12`.
 - deterministic sizing/risk caps remain configurable but are enforced after AI output.
 
@@ -123,13 +149,16 @@ Do not commit portfolio quantities or credentials. Existing CMC/Bitso/DefiLlama 
 
 ## Next sprint
 
-Sprint 5 should focus on shadow go-live readiness rather than adding more model intelligence:
-- deployment-grade configuration validation;
-- PostgreSQL migrations/backup/retention policy;
-- health and cost telemetry;
-- full dry-run cycle using mock reasoning;
-- optional OpenAI event-driven reasoning canary;
-- source-quality and provider-failure monitoring;
-- deployment checklist for Render without enabling exchange execution.
+Sprint 6 is the **shadow deployment and burn-in phase**. It should begin only after explicit approval to touch Render.
 
-No Render deployment and no real-money execution are included in Sprint 4.
+Planned Sprint 6:
+- provision persistent PostgreSQL;
+- deploy a separate scheduled shadow-learning job;
+- run migrations;
+- seed the shadow portfolio privately;
+- start with reasoning disabled or mock;
+- observe at least 24 hours of collector/portfolio health;
+- enable a small event-driven AI canary only after telemetry is stable;
+- accumulate the first real 4h/24h/7d/30d learning outcomes.
+
+Real-money execution remains outside Sprint 6.
