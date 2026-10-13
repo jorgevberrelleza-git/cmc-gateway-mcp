@@ -1,5 +1,6 @@
 import { buildTradingSnapshot } from '../src/research.mjs';
 import { detectMaterialEvent } from '../src/learning/event-detector.mjs';
+import { buildDecisionQueueItem } from '../src/learning/decision-queue.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
 
 function parseAssets() {
@@ -34,13 +35,28 @@ try {
       };
 
   const saved = await store.saveSnapshot(snapshot, { source, materialEvent });
+  let queued = null;
+  const queueItem = buildDecisionQueueItem(saved, materialEvent);
+  if (queueItem) queued = await store.enqueueDecisionReview({
+    snapshotId: queueItem.snapshot_id,
+    queueKey: queueItem.queue_key,
+    priority: queueItem.priority,
+    materialEvent: queueItem.material_event
+  });
+
   console.log(JSON.stringify({
     ok: true,
     snapshot_id: saved.id,
     generated_at: saved.generated_at,
     sha256: saved.sha256,
     material_event: materialEvent.material,
-    reasons: materialEvent.reasons
+    reasons: materialEvent.reasons,
+    decision_queue: queued ? {
+      id: queued.id,
+      status: queued.status,
+      priority: queued.priority
+    } : null,
+    execution_enabled: false
   }));
 } finally {
   await store.close();
