@@ -85,7 +85,8 @@ try {
           maxNewExposurePct: Number(process.env.LEARNING_MAX_NEW_EXPOSURE_PCT || 0.10),
           feeRate: Number(process.env.LEARNING_PAPER_FEE_RATE || 0.001),
           slippageBps: Number(process.env.LEARNING_PAPER_SLIPPAGE_BPS || 10),
-          macroSourceAttested: reasoned?.evidence?.provider_attested_sources === true
+          macroSourceAttested: reasoned?.evidence?.provider_attested_sources === true,
+          attestedMacroUrls: reasoned?.evidence?.attested_urls || []
         });
 
         validationSummary.push({
