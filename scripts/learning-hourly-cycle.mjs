@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 
 const steps = [
   ['collector', ['run', 'learning:collector']],
+  ['reasoner', ['run', 'learning:reasoner']],
   ['paper-fill', ['run', 'learning:paper:fill']],
   ['portfolio-mark', ['run', 'learning:portfolio:mark']],
   ['outcomes', ['run', 'learning:outcomes']],
