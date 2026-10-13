@@ -49,14 +49,18 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
     if (currentPrice == null || invalidation == null || target == null) {
       errors.push('buy_requires_current_price_invalidation_and_target');
     } else {
-      try {
-        deterministicRewardRisk = calculateRewardRisk({
-          entry_price: currentPrice,
-          invalidation_price: invalidation,
-          target_price: target
-        });
-      } catch {
-        errors.push('buy_reward_risk_inputs_invalid');
+      if (invalidation >= currentPrice) errors.push('buy_invalidation_must_be_below_entry');
+      if (target <= currentPrice) errors.push('buy_target_must_be_above_entry');
+      if (invalidation < currentPrice && target > currentPrice) {
+        try {
+          deterministicRewardRisk = calculateRewardRisk({
+            entry_price: currentPrice,
+            invalidation_price: invalidation,
+            target_price: target
+          });
+        } catch {
+          errors.push('buy_reward_risk_inputs_invalid');
+        }
       }
     }
   }
