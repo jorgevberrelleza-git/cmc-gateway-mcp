@@ -49,6 +49,32 @@ try {
       });
 
       const providerPacket = sanitizeReasoningPacketForProvider(packet);
+      const maxEventAgeHours = Math.max(1, Number(process.env.LEARNING_REASONING_MAX_EVENT_AGE_HOURS || 6));
+      const eventAgeHours = (Date.now() - Date.parse(snapshotRow.generated_at)) / 3_600_000;
+      if (Number.isFinite(eventAgeHours) && eventAgeHours > maxEventAgeHours) {
+        run = await store.startReasoningRun({
+          queueId: queueItem.id,
+          provider: provider.name,
+          model: provider.model,
+          requestPacket: providerPacket
+        });
+        await store.finishReasoningRun(run.id, {
+          status: 'skipped',
+          validationSummary: {
+            skipped: true,
+            reason: 'material_event_too_old_for_new_shadow_decision',
+            event_age_hours: eventAgeHours,
+            max_event_age_hours: maxEventAgeHours
+          }
+        });
+        await store.finishQueueItem(queueItem.id, {
+          status: 'skipped',
+          errorMessage: 'material_event_too_old_for_new_shadow_decision'
+        });
+        summary.processed += 1;
+        continue;
+      }
+
       run = await store.startReasoningRun({
         queueId: queueItem.id,
         provider: provider.name,
@@ -74,9 +100,25 @@ try {
       const acceptedIds = [];
       const rejected = [];
       const validationSummary = [];
+      const seenAssets = new Set();
 
       for (let index = 0; index < proposals.length; index++) {
         const proposal = proposals[index];
+        const proposalAsset = String(proposal?.asset || '').toUpperCase();
+        if (seenAssets.has(proposalAsset)) {
+          const duplicate = {
+            proposal_index: index,
+            asset: proposalAsset,
+            action: proposal?.action,
+            errors: ['duplicate_asset_proposal'],
+            quality: null
+          };
+          rejected.push(duplicate);
+          validationSummary.push({ ...duplicate, accepted: false });
+          summary.rejected_proposals += 1;
+          continue;
+        }
+        seenAssets.add(proposalAsset);
         const assessment = assessReasoningProposal(proposal, packet, {
           maxMacroAgeHours: Number(process.env.LEARNING_MACRO_MAX_AGE_HOURS || 12),
           maxRiskPct: Number(process.env.LEARNING_MAX_RISK_PCT || 0.01),
