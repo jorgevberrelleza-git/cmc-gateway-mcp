@@ -35,15 +35,15 @@ try {
       const snapshotTime = Date.parse(snapshotRow.generated_at);
       const from = new Date(snapshotTime - 24 * 60 * 60 * 1000).toISOString();
       const recentSnapshots = await store.snapshotsBetween(from, snapshotRow.generated_at, 100);
-      const portfolioMarks = await store.recentPortfolioMarks(1);
-      const recentDecisions = await store.listDecisions({ limit: 50 });
-      const watchdogEvents = await store.listWatchdogEvents({ limit: 50 });
+      const pointInTimePortfolio = await store.portfolioMarkAtOrBefore(snapshotRow.generated_at);
+      const recentDecisions = await store.listDecisions({ to: snapshotRow.generated_at, limit: 50 });
+      const watchdogEvents = await store.listWatchdogEvents({ to: snapshotRow.generated_at, limit: 50 });
 
       const packet = buildReasoningPacket({
         queueItem,
         snapshotRow,
         recentSnapshots,
-        latestPortfolioMark: portfolioMarks[0] || null,
+        latestPortfolioMark: pointInTimePortfolio,
         recentDecisions,
         watchdogEvents
       });
