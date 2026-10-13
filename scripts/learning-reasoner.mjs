@@ -15,6 +15,7 @@ if (!enabled) {
 }
 
 const maxItems = Math.max(1, Math.min(10, Number(process.env.LEARNING_REASONING_MAX_ITEMS || 3)));
+const maxAttempts = Math.max(1, Math.min(10, Number(process.env.LEARNING_REASONING_MAX_ATTEMPTS || 3)));
 const provider = createReasoningProvider();
 const store = createLearningStore();
 const summary = { claimed: 0, processed: 0, accepted_decisions: 0, rejected_proposals: 0, provider_errors: 0, stale_requeued: 0 };
@@ -23,7 +24,7 @@ try {
   const requeued = await store.requeueStaleDecisionQueue(Number(process.env.LEARNING_REASONING_STALE_MINUTES || 30));
   summary.stale_requeued = requeued.length;
   for (let count = 0; count < maxItems; count++) {
-    const queueItem = await store.claimNextDecisionQueue();
+    const queueItem = await store.claimNextDecisionQueue(maxAttempts);
     if (!queueItem) break;
     summary.claimed += 1;
 
@@ -234,7 +235,14 @@ try {
           errorMessage: message
         }).catch(() => {});
       }
-      await store.releaseQueueItem(queueItem.id, { errorMessage: message }).catch(() => {});
+      if (Number(queueItem.attempt_count || 0) >= maxAttempts) {
+        await store.finishQueueItem(queueItem.id, {
+          status: 'error',
+          errorMessage: `max_reasoning_attempts_reached:${message}`
+        }).catch(() => {});
+      } else {
+        await store.releaseQueueItem(queueItem.id, { errorMessage: message }).catch(() => {});
+      }
     }
   }
 
