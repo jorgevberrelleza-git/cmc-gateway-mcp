@@ -118,6 +118,9 @@ try {
   });
   assert.ok(mark.id);
 
+  const pointInTimeMark = await store.portfolioMarkAtOrBefore(snapshot.generated_at);
+  assert.equal(Number(pointInTimeMark.id), Number(mark.id));
+
   const candidates = await store.outcomeCandidates();
   const candidate = candidates.find(x => Number(x.id) === Number(decision.id));
   assert.ok(candidate);
