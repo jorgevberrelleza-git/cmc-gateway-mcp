@@ -535,6 +535,18 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows;
   }
 
+  async function reasoningRunsBetween(from, to, limit = 10000) {
+    const safeLimit = Math.max(1, Math.min(50000, Number(limit) || 10000));
+    const result = await pool.query(
+      `select * from learning_reasoning_runs
+       where started_at >= $1 and started_at < $2
+       order by started_at asc
+       limit $3`,
+      [from, to, safeLimit]
+    );
+    return result.rows;
+  }
+
   async function saveRuntimeCycle({
     cycleKey,
     startedAt,
@@ -629,6 +641,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     startReasoningRun,
     finishReasoningRun,
     listReasoningRuns,
+    reasoningRunsBetween,
     saveRuntimeCycle,
     recentRuntimeCycles,
     databaseStats,
