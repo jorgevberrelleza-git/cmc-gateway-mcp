@@ -48,6 +48,26 @@ const v3MapSnapshot = {
 };
 assert.deepEqual(extractUsdPrices(v3MapSnapshot), { BTC: 80200, AAVE: 162 });
 
+const v3DeepWrappedSnapshot = {
+  snapshot_version: '0.6.2',
+  generated_at: '2026-10-13T00:00:00Z',
+  assets: ['BTC','AAVE'],
+  cmc_ids: { BTC: '1', AAVE: '7278' },
+  quotes: {
+    structuredContent: {
+      payload: {
+        result: {
+          items: {
+            '1': { id: 1, name: 'Bitcoin', symbol: 'BTC', quote: { USD: { price: 80300, percent_change_24h: 0.5 } } },
+            '7278': { id: 7278, name: 'Aave', symbol: 'AAVE', quote: { USD: { price: 163, percent_change_24h: -0.3 } } }
+          }
+        }
+      }
+    }
+  }
+};
+assert.deepEqual(extractUsdPrices(v3DeepWrappedSnapshot), { BTC: 80300, AAVE: 163 });
+
 const materialEvent = {
   material: true,
   reasons: ['BTC:price_move_3.20pct', 'BTC:gate_NORMAL_REVIEW_to_BLOCK_NEW_ENTRY'],
