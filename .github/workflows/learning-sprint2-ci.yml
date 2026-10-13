@@ -35,3 +35,6 @@ jobs:
 
       - name: Sprint 2 learning self-test
         run: npm run learning:sprint2:selftest
+
+      - name: Sprint 3 learning self-test
+        run: npm run learning:sprint3:selftest
