@@ -528,6 +528,63 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows;
   }
 
+  async function saveRuntimeCycle({
+    cycleKey,
+    startedAt,
+    completedAt,
+    status,
+    durationMs,
+    steps,
+    configFingerprint = null
+  }) {
+    if (!['success','partial','error'].includes(status)) throw new Error('invalid_runtime_cycle_status');
+    const result = await pool.query(
+      `insert into learning_runtime_cycles
+        (cycle_key, started_at, completed_at, status, duration_ms, steps, config_fingerprint, execution_enabled)
+       values ($1,$2,$3,$4,$5,$6::jsonb,$7,false)
+       on conflict (cycle_key) do nothing
+       returning *`,
+      [cycleKey, startedAt, completedAt, status, durationMs, j(steps), configFingerprint]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function recentRuntimeCycles(limit = 100) {
+    const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 100));
+    const result = await pool.query(
+      `select * from learning_runtime_cycles order by started_at desc limit $1`,
+      [safeLimit]
+    );
+    return result.rows;
+  }
+
+  async function databaseStats() {
+    const counts = await pool.query(`
+      select 'learning_snapshots' as table_name, count(*)::bigint as row_count from learning_snapshots
+      union all select 'learning_decisions', count(*)::bigint from learning_decisions
+      union all select 'learning_decision_queue', count(*)::bigint from learning_decision_queue
+      union all select 'learning_paper_orders', count(*)::bigint from learning_paper_orders
+      union all select 'learning_outcomes', count(*)::bigint from learning_outcomes
+      union all select 'learning_portfolio_ledger', count(*)::bigint from learning_portfolio_ledger
+      union all select 'learning_portfolio_marks', count(*)::bigint from learning_portfolio_marks
+      union all select 'learning_watchdog_events', count(*)::bigint from learning_watchdog_events
+      union all select 'learning_reasoning_runs', count(*)::bigint from learning_reasoning_runs
+      union all select 'learning_runtime_cycles', count(*)::bigint from learning_runtime_cycles
+    `);
+    const size = await pool.query(`
+      select pg_database_size(current_database())::bigint as database_bytes,
+             min(generated_at) as oldest_snapshot,
+             max(generated_at) as newest_snapshot
+      from learning_snapshots
+    `);
+    return {
+      tables: Object.fromEntries(counts.rows.map(x => [x.table_name, Number(x.row_count)])),
+      database_bytes: Number(size.rows[0]?.database_bytes || 0),
+      oldest_snapshot: size.rows[0]?.oldest_snapshot ?? null,
+      newest_snapshot: size.rows[0]?.newest_snapshot ?? null
+    };
+  }
+
   async function close() { await pool.end(); }
 
   return {
@@ -565,6 +622,9 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     startReasoningRun,
     finishReasoningRun,
     listReasoningRuns,
+    saveRuntimeCycle,
+    recentRuntimeCycles,
+    databaseStats,
     close
   };
 }
