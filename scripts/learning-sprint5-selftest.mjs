@@ -40,6 +40,13 @@ const overRisk = validateShadowRuntimeConfig({
 });
 assert.equal(overRisk.ready_for_shadow, false);
 
+const tooManyRetries = validateShadowRuntimeConfig({
+  DATABASE_URL: 'postgresql://example',
+  LEARNING_REASONING_MAX_ATTEMPTS: '9'
+});
+assert.equal(tooManyRetries.ready_for_shadow, false);
+assert.ok(tooManyRetries.errors.includes('LEARNING_REASONING_MAX_ATTEMPTS_out_of_range'));
+
 const openaiMissingSecrets = validateShadowRuntimeConfig({
   DATABASE_URL: 'postgresql://example',
   LEARNING_REASONING_ENABLED: 'true',
