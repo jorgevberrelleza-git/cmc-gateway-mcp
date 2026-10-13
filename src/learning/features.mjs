@@ -156,7 +156,22 @@ export function extractLearningFeatures(snapshot) {
 
 export function extractUsdPrices(snapshot) {
   const features = extractLearningFeatures(snapshot);
-  return Object.fromEntries(Object.entries(features.assets)
+  const prices = Object.fromEntries(Object.entries(features.assets)
     .filter(([, value]) => Number.isFinite(Number(value.price_usd)) && Number(value.price_usd) > 0)
     .map(([symbol, value]) => [symbol, Number(value.price_usd)]));
+
+  for (const symbol of snapshot?.assets || []) {
+    const s = String(symbol).toUpperCase();
+    if (Number.isFinite(Number(prices[s])) && Number(prices[s]) > 0) continue;
+
+    const micro = snapshot?.microstructure?.assets?.[s] || {};
+    const minor = String(micro?.minor_currency || '').toLowerCase();
+    const mid = Number(micro?.order_book?.mid);
+
+    if (['usd', 'usdc', 'usdt'].includes(minor) && Number.isFinite(mid) && mid > 0) {
+      prices[s] = mid;
+    }
+  }
+
+  return prices;
 }
