@@ -36,10 +36,33 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
 
   if (proposal.kill_switch === true) errors.push('ai_cannot_activate_kill_switch');
 
-  const macro = validateMacroContext(proposal.macro_context || {});
-  if (!macro.ok) errors.push(...macro.errors.map(x => `macro:${x}`));
-  const macroAge = freshnessHours(proposal?.macro_context?.observed_at, packet?.market?.generated_at);
-  if (macroAge == null || macroAge > maxMacroAgeHours) errors.push('macro_context_stale_or_unanchored');
+  const macroRaw = proposal.macro_context || {};
+  const verificationStatus = String(macroRaw.verification_status || 'insufficient').toLowerCase();
+  const sources = Array.isArray(macroRaw.sources) ? macroRaw.sources : [];
+  const validSourceUrls = sources.filter(x => {
+    try {
+      const url = new URL(String(x?.url || ''));
+      return ['http:', 'https:'].includes(url.protocol);
+    } catch {
+      return false;
+    }
+  });
+  const highQualitySources = validSourceUrls.filter(x => ['primary','reuters'].includes(String(x?.kind || '').toLowerCase()));
+  const macro = validateMacroContext(macroRaw);
+  const macroAge = freshnessHours(macroRaw.observed_at, packet?.market?.generated_at);
+  const positionChanging = action !== 'HOLD';
+
+  if (verificationStatus === 'verified') {
+    if (!macro.ok) errors.push(...macro.errors.map(x => `macro:${x}`));
+    if (macroAge == null || macroAge > maxMacroAgeHours) errors.push('macro_context_stale_or_unanchored');
+  } else if (positionChanging) {
+    errors.push('macro_context_not_verified_for_position_change');
+  }
+
+  if (positionChanging) {
+    if (validSourceUrls.length < 2) errors.push('position_change_requires_two_macro_sources');
+    if (highQualitySources.length < 1) errors.push('position_change_requires_primary_or_reuters_macro_source');
+  }
 
   let deterministicRewardRisk = num(proposal.reward_risk);
   const currentPrice = num(assetData?.price_usd);
@@ -97,14 +120,26 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
       action,
       reward_risk: deterministicRewardRisk,
       persistence,
-      macro_context: macro.normalized,
+      macro_context: verificationStatus === 'verified' ? macro.normalized : {
+        regime: macroRaw.regime ?? 'unknown',
+        liquidity: macroRaw.liquidity ?? 'unknown',
+        shock_risk: macroRaw.shock_risk ?? 'unknown',
+        observed_at: macroRaw.observed_at ?? null,
+        evidence: Array.isArray(macroRaw.evidence) ? macroRaw.evidence : [],
+        source_quality: macroRaw.source_quality || 'unavailable',
+        verification_status: verificationStatus,
+        sources
+      },
       execution_enabled: false,
       kill_switch: false
     },
     macro_validation: {
-      ok: macro.ok && macroAge != null && macroAge <= maxMacroAgeHours,
+      ok: verificationStatus === 'verified' && macro.ok && macroAge != null && macroAge <= maxMacroAgeHours,
+      verification_status: verificationStatus,
       errors: macro.errors,
-      age_hours: macroAge
+      age_hours: macroAge,
+      valid_source_count: validSourceUrls.length,
+      high_quality_source_count: highQualitySources.length
     }
   };
 }
