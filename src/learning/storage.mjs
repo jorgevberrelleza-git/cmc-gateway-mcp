@@ -218,7 +218,8 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows;
   }
 
-  async function claimNextDecisionQueue() {
+  async function claimNextDecisionQueue(maxAttempts = 3) {
+    const attempts = Math.max(1, Math.min(20, Number(maxAttempts) || 3));
     const client = await pool.connect();
     try {
       await client.query('begin');
@@ -226,9 +227,11 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
         `select *
          from learning_decision_queue
          where status = 'pending'
+           and attempt_count < $1
          order by priority desc, created_at asc
          for update skip locked
-         limit 1`
+         limit 1`,
+        [attempts]
       );
       const row = picked.rows[0];
       if (!row) {
@@ -237,7 +240,11 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
       }
       const updated = await client.query(
         `update learning_decision_queue
-         set status = 'processing', claimed_at = now(), error_message = null
+         set status = 'processing',
+             claimed_at = now(),
+             last_attempt_at = now(),
+             attempt_count = attempt_count + 1,
+             error_message = null
          where id = $1
          returning *`,
         [row.id]
