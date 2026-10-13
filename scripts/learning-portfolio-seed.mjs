@@ -1,4 +1,5 @@
 import { extractUsdPrices } from '../src/learning/features.mjs';
+import { fillMissingUsdPrices } from '../src/learning/valuation-fallback.mjs';
 import { createSeedLedgerEvents } from '../src/learning/portfolio-ledger.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
 
@@ -15,7 +16,9 @@ try {
     const seed = JSON.parse(raw);
     const latest = await store.latestSnapshot();
     if (!latest) throw new Error('at least one stored snapshot is required before portfolio seed');
-    const prices = extractUsdPrices(latest.payload || {});
+    const extractedPrices = extractUsdPrices(latest.payload || {});
+    const resolved = await fillMissingUsdPrices(extractedPrices, Object.keys(seed.positions || {}));
+    const prices = resolved.prices;
     const positions = Object.fromEntries(Object.entries(seed.positions || {})
       .map(([symbol, quantity]) => [String(symbol).toUpperCase(), Number(quantity)]));
 
