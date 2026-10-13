@@ -84,7 +84,8 @@ try {
           maxPositionPct: Number(process.env.LEARNING_MAX_POSITION_PCT || 0.20),
           maxNewExposurePct: Number(process.env.LEARNING_MAX_NEW_EXPOSURE_PCT || 0.10),
           feeRate: Number(process.env.LEARNING_PAPER_FEE_RATE || 0.001),
-          slippageBps: Number(process.env.LEARNING_PAPER_SLIPPAGE_BPS || 10)
+          slippageBps: Number(process.env.LEARNING_PAPER_SLIPPAGE_BPS || 10),
+          macroSourceAttested: reasoned?.evidence?.provider_attested_sources === true
         });
 
         validationSummary.push({
@@ -167,7 +168,8 @@ try {
         status: acceptedIds.length ? 'completed' : 'rejected',
         responsePayload: {
           output: reasoned.output,
-          provider_response: reasoned.raw_response ?? null
+          provider_response: reasoned.raw_response ?? null,
+          provider_evidence: reasoned.evidence ?? null
         },
         validationSummary,
         acceptedDecisionIds: acceptedIds,
