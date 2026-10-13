@@ -154,7 +154,15 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
       kill_switch: false
     },
     macro_validation: {
-      ok: verificationStatus === 'verified' && macro.ok && macroAge != null && macroAge <= maxMacroAgeHours,
+      ok: verificationStatus === 'verified'
+        && macro.ok
+        && macroAge != null
+        && macroAge <= maxMacroAgeHours
+        && (!positionChanging || (
+          macroSourceAttested === true
+          && matchedSources.length >= 2
+          && matchedHighQualitySources.length >= 1
+        )),
       verification_status: verificationStatus,
       errors: macro.errors,
       age_hours: macroAge,
