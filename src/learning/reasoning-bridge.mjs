@@ -26,7 +26,8 @@ function portfolioPosition(packet, asset) {
 }
 
 export function validateReasoningProposal(proposal = {}, packet = {}, {
-  maxMacroAgeHours = 12
+  maxMacroAgeHours = 12,
+  macroSourceAttested = false
 } = {}) {
   const asset = String(proposal.asset || '').toUpperCase();
   const action = String(proposal.action || '').toUpperCase();
@@ -62,6 +63,7 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
   if (positionChanging) {
     if (validSourceUrls.length < 2) errors.push('position_change_requires_two_macro_sources');
     if (highQualitySources.length < 1) errors.push('position_change_requires_primary_or_reuters_macro_source');
+    if (macroSourceAttested !== true) errors.push('macro_source_attestation_required');
   }
 
   let deterministicRewardRisk = num(proposal.reward_risk);
@@ -139,7 +141,8 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
       errors: macro.errors,
       age_hours: macroAge,
       valid_source_count: validSourceUrls.length,
-      high_quality_source_count: highQualitySources.length
+      high_quality_source_count: highQualitySources.length,
+      provider_source_attested: macroSourceAttested === true
     }
   };
 }
