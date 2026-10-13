@@ -46,14 +46,33 @@ export const REASONING_OUTPUT_SCHEMA = Object.freeze({
           macro_context: {
             type: 'object',
             additionalProperties: false,
-            required: ['regime','liquidity','shock_risk','observed_at','evidence','source_quality'],
+            required: [
+              'regime','liquidity','shock_risk','observed_at','evidence',
+              'source_quality','verification_status','sources'
+            ],
             properties: {
-              regime: { type: 'string', enum: ['favorable','neutral','adverse'] },
-              liquidity: { type: 'string', enum: ['expanding','stable','contracting'] },
-              shock_risk: { type: 'string', enum: ['low','medium','high'] },
+              regime: { type: 'string', enum: ['favorable','neutral','adverse','unknown'] },
+              liquidity: { type: 'string', enum: ['expanding','stable','contracting','unknown'] },
+              shock_risk: { type: 'string', enum: ['low','medium','high','unknown'] },
               observed_at: { type: 'string' },
-              evidence: { type: 'array', minItems: 2, items: { type: 'string' } },
-              source_quality: { type: 'string' }
+              evidence: { type: 'array', items: { type: 'string' } },
+              source_quality: { type: 'string' },
+              verification_status: { type: 'string', enum: ['verified','insufficient','conflicted'] },
+              sources: {
+                type: 'array',
+                maxItems: 6,
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['name','url','kind','published_at'],
+                  properties: {
+                    name: { type: 'string' },
+                    url: { type: 'string' },
+                    kind: { type: 'string', enum: ['primary','reuters','reputable_secondary','aggregator','unknown'] },
+                    published_at: { anyOf: [{ type: 'string' }, { type: 'null' }] }
+                  }
+                }
+              }
             }
           },
           data_confidence: { type: 'number', minimum: 0, maximum: 100 },
@@ -75,8 +94,9 @@ export function reasoningSystemInstructions() {
     'A price decline by itself must never justify moving capital to USD.',
     'For BUY, require at least three independent evidence families and reward/risk >= 2.',
     'For REDUCE/SELL/MOVE_TO_USD, require multiple independent evidence families and respect deterministic persistence supplied in the packet.',
-    'If macro evidence is missing, stale, contradictory, or unverifiable, choose HOLD rather than inventing a macro regime.',
+    'If macro evidence is missing, stale, contradictory, or unverifiable, set verification_status to insufficient/conflicted, use unknown where needed, and choose HOLD.',
     'Do not chase >5% daily candles without breakout/retest, spot confirmation, fresh catalyst, and acceptable crowding.',
+    'For any position-changing action, macro verification must include at least two sources and at least one primary source or Reuters source.',
     'The objective is expected compound growth under strict drawdown/risk-of-ruin constraints, not maximizing trade frequency.',
     'Return concise structured proposals only.'
   ].join('\n');
