@@ -36,6 +36,13 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
   const microEnabled = bool(env.LEARNING_INCLUDE_MICROSTRUCTURE, true);
   const webSearch = bool(env.LEARNING_REASONING_WEB_SEARCH, false);
 
+  const monthlyAiBudget = n(env.LEARNING_MONTHLY_AI_BUDGET_USD, NaN);
+  const monthlyTotalBudget = n(env.LEARNING_MONTHLY_TOTAL_BUDGET_USD, NaN);
+  const monthlyInfraBudget = n(env.LEARNING_MONTHLY_INFRA_BUDGET_USD, NaN);
+  const monthlyRunLimit = n(env.LEARNING_MONTHLY_REASONING_RUN_LIMIT, 100);
+  const budgetAlertPct = n(env.LEARNING_BUDGET_ALERT_PCT, 80);
+  const budgetWebReserveCalls = n(env.LEARNING_BUDGET_WEB_SEARCH_RESERVE_CALLS, 3);
+
   if (requireDatabase && !env.DATABASE_URL) errors.push('DATABASE_URL_required');
   if (!assets.length || assets.length > 3) errors.push('LEARNING_ASSETS_must_have_1_to_3_assets');
   for (const asset of assets) if (!SUPPORTED_ASSETS.has(asset)) errors.push(`unsupported_learning_asset:${asset}`);
@@ -69,13 +76,6 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
 
   const maxAttempts = n(env.LEARNING_REASONING_MAX_ATTEMPTS, 3);
   if (!Number.isFinite(maxAttempts) || maxAttempts < 1 || maxAttempts > 5) errors.push('LEARNING_REASONING_MAX_ATTEMPTS_out_of_range');
-
-  const monthlyAiBudget = n(env.LEARNING_MONTHLY_AI_BUDGET_USD, NaN);
-  const monthlyTotalBudget = n(env.LEARNING_MONTHLY_TOTAL_BUDGET_USD, NaN);
-  const monthlyInfraBudget = n(env.LEARNING_MONTHLY_INFRA_BUDGET_USD, NaN);
-  const monthlyRunLimit = n(env.LEARNING_MONTHLY_REASONING_RUN_LIMIT, 100);
-  const budgetAlertPct = n(env.LEARNING_BUDGET_ALERT_PCT, 80);
-  const budgetWebReserveCalls = n(env.LEARNING_BUDGET_WEB_SEARCH_RESERVE_CALLS, 3);
 
   if (Number.isFinite(monthlyTotalBudget) && monthlyTotalBudget <= 0) errors.push('LEARNING_MONTHLY_TOTAL_BUDGET_USD_must_be_positive');
   if (Number.isFinite(monthlyInfraBudget) && monthlyInfraBudget < 0) errors.push('LEARNING_MONTHLY_INFRA_BUDGET_USD_must_be_nonnegative');
