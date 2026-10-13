@@ -1,0 +1,37 @@
+name: Learning Sprint 2 CI
+
+on:
+  push:
+    branches:
+      - feature/learning-engine-v0.1
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Syntax checks
+        run: npm run check
+
+      - name: Sprint 1 learning self-test
+        run: npm run learning:selftest
+
+      - name: Sprint 2 learning self-test
+        run: npm run learning:sprint2:selftest
