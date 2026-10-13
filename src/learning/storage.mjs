@@ -3,6 +3,10 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
+function j(value) {
+  return JSON.stringify(value ?? {});
+}
+
 export function createLearningStore({ connectionString = process.env.DATABASE_URL } = {}) {
   if (!connectionString) throw new Error('DATABASE_URL is required for persistent learning storage');
   const pool = new Pool({ connectionString, ssl: process.env.PGSSL === 'disable' ? false : undefined });
@@ -15,7 +19,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
       `insert into learning_snapshots (generated_at, snapshot_version, source, sha256, payload, material_event)
        values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
        on conflict (sha256) do update set material_event = coalesce(excluded.material_event, learning_snapshots.material_event)
-       returning id, sha256, generated_at`,
+       returning id, sha256, generated_at, payload, material_event`,
       [generatedAt, snapshot?.snapshot_version ?? null, source, sha256, raw, materialEvent ? JSON.stringify(materialEvent) : null]
     );
     return result.rows[0];
@@ -30,7 +34,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
   }
 
   async function recentSnapshots(limit = 3) {
-    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 3));
+    const safeLimit = Math.max(1, Math.min(500, Number(limit) || 3));
     const result = await pool.query(
       `select id, generated_at, snapshot_version, source, sha256, payload, material_event
        from learning_snapshots order by generated_at desc limit $1`,
@@ -39,9 +43,39 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows;
   }
 
+  async function snapshotsBetween(from, to, limit = 1000) {
+    const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
+    const result = await pool.query(
+      `select id, generated_at, snapshot_version, source, sha256, payload, material_event
+       from learning_snapshots
+       where generated_at >= $1 and generated_at <= $2
+       order by generated_at asc
+       limit $3`,
+      [from, to, safeLimit]
+    );
+    return result.rows;
+  }
+
+  async function nearestSnapshot(targetTime, toleranceMs) {
+    const tolerance = Math.max(60_000, Number(toleranceMs) || 3_600_000);
+    const half = Math.round(tolerance / 2);
+    const result = await pool.query(
+      `select id, generated_at, snapshot_version, source, sha256, payload, material_event
+       from learning_snapshots
+       where generated_at between ($1::timestamptz - ($2 * interval '1 millisecond'))
+                              and ($1::timestamptz + ($2 * interval '1 millisecond'))
+       order by abs(extract(epoch from (generated_at - $1::timestamptz))) asc
+       limit 1`,
+      [targetTime, half]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async function saveDecision({
     decisionKey,
     snapshotId,
+    asset = null,
+    action = null,
     decisionType,
     thesis,
     riskContext,
@@ -50,21 +84,38 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
   }) {
     const result = await pool.query(
       `insert into learning_decisions
-        (decision_key, snapshot_id, decision_type, status, thesis, risk_context, portfolio_context)
-       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb)
+        (decision_key, snapshot_id, asset, action, decision_type, status, thesis, risk_context, portfolio_context)
+       values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb)
        on conflict (decision_key) do nothing
-       returning id, decision_key, snapshot_id, decision_type, status, created_at`,
+       returning id, decision_key, snapshot_id, asset, action, decision_type, status, created_at`,
       [
         decisionKey,
         snapshotId,
+        asset ? String(asset).toUpperCase() : null,
+        action ? String(action).toUpperCase() : null,
         decisionType,
         status,
-        JSON.stringify(thesis || {}),
-        JSON.stringify(riskContext || {}),
-        JSON.stringify(portfolioContext || {})
+        j(thesis),
+        j(riskContext),
+        j(portfolioContext)
       ]
     );
     return result.rows[0] ?? null;
+  }
+
+  async function listDecisions({ from = null, to = null, limit = 1000 } = {}) {
+    const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
+    const clauses = [];
+    const args = [];
+    if (from) { args.push(from); clauses.push(`created_at >= $${args.length}`); }
+    if (to) { args.push(to); clauses.push(`created_at <= $${args.length}`); }
+    args.push(safeLimit);
+    const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
+    const result = await pool.query(
+      `select * from learning_decisions ${where} order by created_at asc limit $${args.length}`,
+      args
+    );
+    return result.rows;
   }
 
   async function savePaperOrder({
@@ -87,11 +138,112 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        returning *`,
       [
-        decisionId, symbol, side, quantity, notionalUsd, referencePriceUsd,
+        decisionId, String(symbol || '').toUpperCase(), side, quantity, notionalUsd, referencePriceUsd,
         invalidationPriceUsd, targetPriceUsd, estimatedFeeUsd, estimatedSlippageBps, state
       ]
     );
     return result.rows[0];
+  }
+
+  async function paperOrdersForDecision(decisionId) {
+    const result = await pool.query(
+      `select * from learning_paper_orders where decision_id = $1 order by id asc`,
+      [decisionId]
+    );
+    return result.rows;
+  }
+
+  async function enqueueDecisionReview({ snapshotId, queueKey, priority = 50, materialEvent }) {
+    const result = await pool.query(
+      `insert into learning_decision_queue (snapshot_id, queue_key, priority, material_event)
+       values ($1,$2,$3,$4::jsonb)
+       on conflict (queue_key) do nothing
+       returning *`,
+      [snapshotId, queueKey, priority, j(materialEvent)]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function listDecisionQueue({ status = null, limit = 100 } = {}) {
+    const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 100));
+    const result = status
+      ? await pool.query(
+          `select * from learning_decision_queue where status = $1 order by priority desc, created_at asc limit $2`,
+          [status, safeLimit]
+        )
+      : await pool.query(
+          `select * from learning_decision_queue order by created_at asc limit $1`,
+          [safeLimit]
+        );
+    return result.rows;
+  }
+
+  async function finishQueueItem(id, { status = 'processed', decisionId = null, errorMessage = null } = {}) {
+    if (!['processed','skipped','error'].includes(status)) throw new Error('invalid_queue_finish_status');
+    const result = await pool.query(
+      `update learning_decision_queue
+       set status = $2,
+           processed_at = now(),
+           decision_id = coalesce($3, decision_id),
+           error_message = $4
+       where id = $1
+       returning *`,
+      [id, status, decisionId, errorMessage]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function appendLedgerEvent(event) {
+    const result = await pool.query(
+      `insert into learning_portfolio_ledger
+        (event_key, occurred_at, event_type, decision_id, paper_order_id, symbol,
+         quantity_delta, cash_delta_usd, reference_price_usd, fee_usd, metadata)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+       on conflict (event_key) do nothing
+       returning *`,
+      [
+        event.event_key, event.occurred_at, event.event_type, event.decision_id ?? null,
+        event.paper_order_id ?? null, event.symbol ?? null, event.quantity_delta ?? 0,
+        event.cash_delta_usd ?? 0, event.reference_price_usd ?? null, event.fee_usd ?? 0,
+        j(event.metadata)
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function ledgerEvents() {
+    const result = await pool.query(
+      `select * from learning_portfolio_ledger order by occurred_at asc, id asc`
+    );
+    return result.rows;
+  }
+
+  async function savePortfolioMark(mark) {
+    const result = await pool.query(
+      `insert into learning_portfolio_marks
+        (marked_at, snapshot_id, total_value_usd, cash_usd, positions, prices,
+         shadow_return_pct, hodl_value_usd, hodl_return_pct, usd_value_usd,
+         alpha_vs_hodl_pct, drawdown_pct, metadata)
+       values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13::jsonb)
+       on conflict (marked_at, snapshot_id) do nothing
+       returning *`,
+      [
+        mark.marked_at, mark.snapshot_id ?? null, mark.total_value_usd, mark.cash_usd,
+        j(mark.positions), j(mark.prices), mark.shadow_return_pct ?? null,
+        mark.hodl_value_usd ?? null, mark.hodl_return_pct ?? null, mark.usd_value_usd ?? null,
+        mark.alpha_vs_hodl_pct ?? null, mark.drawdown_pct ?? null, j(mark.metadata)
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function recentPortfolioMarks(limit = 100) {
+    const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 100));
+    const result = await pool.query(
+      `select * from learning_portfolio_marks order by marked_at desc limit $1`,
+      [safeLimit]
+    );
+    return result.rows;
   }
 
   async function evaluatedHorizons(decisionId) {
@@ -102,30 +254,112 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows.map(x => x.horizon);
   }
 
+  async function outcomeCandidates(limit = 200) {
+    const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 200));
+    const result = await pool.query(
+      `select d.*, po.id as paper_order_id, po.symbol as order_symbol, po.side as order_side,
+              po.quantity, po.notional_usd, po.reference_price_usd, po.estimated_fee_usd,
+              po.estimated_slippage_bps, s.generated_at as snapshot_generated_at
+       from learning_decisions d
+       join learning_snapshots s on s.id = d.snapshot_id
+       left join lateral (
+         select * from learning_paper_orders p
+         where p.decision_id = d.id
+         order by p.id asc
+         limit 1
+       ) po on true
+       order by d.created_at asc
+       limit $1`,
+      [safeLimit]
+    );
+    return result.rows;
+  }
+
   async function saveOutcome({
     decisionId,
+    paperOrderId = null,
+    markSnapshotId = null,
     horizon,
+    targetTime = null,
     evaluatedAt = new Date().toISOString(),
-    portfolioReturnPct = null,
+    assetReturnPct = null,
+    strategyReturnPct = null,
     holdReturnPct = null,
     usdReturnPct = 0,
+    alphaVsHoldPct = null,
+    portfolioReturnPct = null,
     maxAdverseExcursionPct = null,
     maxFavorableExcursionPct = null,
     notes = {}
   }) {
     const result = await pool.query(
       `insert into learning_outcomes
-        (decision_id, horizon, evaluated_at, portfolio_return_pct, hold_return_pct, usd_return_pct,
-         max_adverse_excursion_pct, max_favorable_excursion_pct, notes)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+        (decision_id, paper_order_id, mark_snapshot_id, horizon, target_time, evaluated_at,
+         asset_return_pct, strategy_return_pct, hold_return_pct, usd_return_pct,
+         alpha_vs_hold_pct, portfolio_return_pct, max_adverse_excursion_pct,
+         max_favorable_excursion_pct, notes)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb)
        on conflict (decision_id, horizon) do nothing
        returning *`,
       [
-        decisionId, horizon, evaluatedAt, portfolioReturnPct, holdReturnPct, usdReturnPct,
-        maxAdverseExcursionPct, maxFavorableExcursionPct, JSON.stringify(notes || {})
+        decisionId, paperOrderId, markSnapshotId, horizon, targetTime, evaluatedAt,
+        assetReturnPct, strategyReturnPct, holdReturnPct, usdReturnPct,
+        alphaVsHoldPct, portfolioReturnPct, maxAdverseExcursionPct,
+        maxFavorableExcursionPct, j(notes)
       ]
     );
     return result.rows[0] ?? null;
+  }
+
+  async function listOutcomes({ from = null, to = null, limit = 5000 } = {}) {
+    const safeLimit = Math.max(1, Math.min(10000, Number(limit) || 5000));
+    const clauses = [];
+    const args = [];
+    if (from) { args.push(from); clauses.push(`evaluated_at >= $${args.length}`); }
+    if (to) { args.push(to); clauses.push(`evaluated_at <= $${args.length}`); }
+    args.push(safeLimit);
+    const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
+    const result = await pool.query(
+      `select * from learning_outcomes ${where} order by evaluated_at asc limit $${args.length}`,
+      args
+    );
+    return result.rows;
+  }
+
+  async function saveWatchdogEvent(event) {
+    const raw = JSON.stringify({
+      asset: event.asset ?? null,
+      event_type: event.event_type,
+      details: event.details ?? {}
+    });
+    const fingerprint = event.fingerprint || crypto.createHash('sha256').update(raw).digest('hex');
+    const result = await pool.query(
+      `insert into learning_watchdog_events
+        (detected_at, asset, event_type, severity, details, fingerprint)
+       values ($1,$2,$3,$4,$5::jsonb,$6)
+       on conflict (fingerprint) do nothing
+       returning *`,
+      [
+        event.detected_at || new Date().toISOString(), event.asset ?? null,
+        event.event_type, event.severity, j(event.details), fingerprint
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function listWatchdogEvents({ from = null, to = null, limit = 1000 } = {}) {
+    const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
+    const clauses = [];
+    const args = [];
+    if (from) { args.push(from); clauses.push(`detected_at >= $${args.length}`); }
+    if (to) { args.push(to); clauses.push(`detected_at <= $${args.length}`); }
+    args.push(safeLimit);
+    const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
+    const result = await pool.query(
+      `select * from learning_watchdog_events ${where} order by detected_at asc limit $${args.length}`,
+      args
+    );
+    return result.rows;
   }
 
   async function close() { await pool.end(); }
@@ -135,10 +369,25 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     saveSnapshot,
     latestSnapshot,
     recentSnapshots,
+    snapshotsBetween,
+    nearestSnapshot,
     saveDecision,
+    listDecisions,
     savePaperOrder,
+    paperOrdersForDecision,
+    enqueueDecisionReview,
+    listDecisionQueue,
+    finishQueueItem,
+    appendLedgerEvent,
+    ledgerEvents,
+    savePortfolioMark,
+    recentPortfolioMarks,
     evaluatedHorizons,
+    outcomeCandidates,
     saveOutcome,
+    listOutcomes,
+    saveWatchdogEvent,
+    listWatchdogEvents,
     close
   };
 }
