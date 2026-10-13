@@ -263,6 +263,21 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows[0] ?? null;
   }
 
+  async function requeueStaleDecisionQueue(staleMinutes = 30) {
+    const minutes = Math.max(5, Math.min(1440, Number(staleMinutes) || 30));
+    const result = await pool.query(
+      `update learning_decision_queue
+       set status = 'pending',
+           claimed_at = null,
+           error_message = coalesce(error_message, 'stale_processing_requeued')
+       where status = 'processing'
+         and claimed_at < now() - ($1::int * interval '1 minute')
+       returning id`,
+      [minutes]
+    );
+    return result.rows.map(x => x.id);
+  }
+
   async function finishQueueItem(id, { status = 'processed', decisionId = null, errorMessage = null } = {}) {
     if (!['processed','skipped','error'].includes(status)) throw new Error('invalid_queue_finish_status');
     const result = await pool.query(
@@ -523,6 +538,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     listDecisionQueue,
     claimNextDecisionQueue,
     releaseQueueItem,
+    requeueStaleDecisionQueue,
     finishQueueItem,
     appendLedgerEvent,
     ledgerEvents,
