@@ -17,12 +17,17 @@ function median(values) {
   return a.length % 2 ? a[i] : (a[i-1] + a[i]) / 2;
 }
 function parsePayload(result) {
-  if (result?.structuredContent != null) return result.structuredContent;
+  const structured = result?.structuredContent ?? null;
+  let parsedText = null;
   for (const block of result?.content || []) {
     if (block?.type !== 'text') continue;
-    try { return JSON.parse(block.text); } catch {}
+    try { parsedText = JSON.parse(block.text); break; } catch {}
   }
-  return null;
+  if (structured != null && parsedText != null) {
+    return { structuredContent: structured, content_json: parsedText };
+  }
+  if (structured != null) return structured;
+  return parsedText;
 }
 function flattenQuoteAsset(asset) {
   if (!asset || typeof asset !== 'object') return null;
