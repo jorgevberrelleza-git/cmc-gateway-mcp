@@ -18,7 +18,9 @@ export function summarizeReasoningCost(runs = [], rates = {}) {
     const usage = run?.usage || {};
     inputTokens += tokenNumber(usage, ['input_tokens','prompt_tokens']);
     outputTokens += tokenNumber(usage, ['output_tokens','completion_tokens']);
-    if (run?.response_payload?.provider_evidence?.web_search_used === true) webSearchCalls += 1;
+    const reportedCalls = Number(run?.response_payload?.provider_evidence?.web_search_calls);
+    if (Number.isFinite(reportedCalls) && reportedCalls >= 0) webSearchCalls += reportedCalls;
+    else if (run?.response_payload?.provider_evidence?.web_search_used === true) webSearchCalls += 1;
   }
 
   const estimatedUsd =
