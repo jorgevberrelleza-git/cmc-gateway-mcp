@@ -1,11 +1,14 @@
-function parseJsonTextBlock(block) {
+function parsePayload(block) {
+  if (block?.structuredContent != null) return block.structuredContent;
+  if (Array.isArray(block)) return block;
   const text = block?.content?.find?.(item => item?.type === 'text')?.text;
   if (!text || typeof text !== 'string') return null;
   try { return JSON.parse(text); } catch { return null; }
 }
 
 function quoteRows(snapshot) {
-  const parsed = parseJsonTextBlock(snapshot?.quotes);
+  const parsed = parsePayload(snapshot?.quotes);
+  if (Array.isArray(parsed)) return parsed;
   const headers = parsed?.headers;
   const rows = parsed?.rows;
   if (!Array.isArray(headers) || !Array.isArray(rows)) return [];
@@ -14,6 +17,11 @@ function quoteRows(snapshot) {
 
 function quoteMap(snapshot) {
   return Object.fromEntries(quoteRows(snapshot).map(row => [String(row.symbol || '').toUpperCase(), row]));
+}
+
+function n(value) {
+  const x = Number(value);
+  return Number.isFinite(x) ? x : null;
 }
 
 export function extractLearningFeatures(snapshot) {
@@ -28,11 +36,11 @@ export function extractLearningFeatures(snapshot) {
     const micro = microAssets[s] || {};
     const defi = defiAssets[s] || {};
     assets[s] = {
-      price_usd: Number.isFinite(Number(q.price)) ? Number(q.price) : null,
-      pct_1h: Number.isFinite(Number(q.percent_change_1h)) ? Number(q.percent_change_1h) : null,
-      pct_24h: Number.isFinite(Number(q.percent_change_24h)) ? Number(q.percent_change_24h) : null,
-      pct_7d: Number.isFinite(Number(q.percent_change_7d)) ? Number(q.percent_change_7d) : null,
-      pct_30d: Number.isFinite(Number(q.percent_change_30d)) ? Number(q.percent_change_30d) : null,
+      price_usd: n(q.price ?? q.price_usd),
+      pct_1h: n(q.percent_change_1h),
+      pct_24h: n(q.percent_change_24h),
+      pct_7d: n(q.percent_change_7d),
+      pct_30d: n(q.percent_change_30d),
       trap_risk: micro?.scores?.trap_risk_0_100 ?? null,
       crowding_risk: micro?.scores?.crowding_risk_0_100 ?? null,
       spot_confirmation: micro?.scores?.spot_confirmation_0_100 ?? null,
@@ -52,4 +60,11 @@ export function extractLearningFeatures(snapshot) {
     generated_at: snapshot?.generated_at ?? null,
     assets
   };
+}
+
+export function extractUsdPrices(snapshot) {
+  const features = extractLearningFeatures(snapshot);
+  return Object.fromEntries(Object.entries(features.assets)
+    .filter(([, value]) => Number.isFinite(Number(value.price_usd)) && Number(value.price_usd) > 0)
+    .map(([symbol, value]) => [symbol, Number(value.price_usd)]));
 }
