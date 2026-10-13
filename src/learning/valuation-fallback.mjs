@@ -4,7 +4,7 @@ const COIN_IDS = {
   ADA: 'coingecko:cardano'
 };
 
-export async function fillMissingUsdPrices(prices = {}, symbols = []) {
+export async function fillMissingUsdPrices(prices = {}, symbols = [], fetchImpl = fetch) {
   const out = { ...prices };
   const missing = [...new Set(symbols.map(x => String(x).toUpperCase()))]
     .filter(symbol => !(Number(out[symbol]) > 0) && COIN_IDS[symbol]);
@@ -12,7 +12,7 @@ export async function fillMissingUsdPrices(prices = {}, symbols = []) {
   if (!missing.length) return { prices: out, fallback_used: false };
 
   const ids = missing.map(symbol => COIN_IDS[symbol]).join(',');
-  const response = await fetch('https://coins.llama.fi/prices/current/' + ids, {
+  const response = await fetchImpl('https://coins.llama.fi/prices/current/' + ids, {
     headers: { accept: 'application/json' }
   });
   if (!response.ok) throw new Error('valuation_fallback_http_' + response.status);
