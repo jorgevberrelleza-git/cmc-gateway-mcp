@@ -40,6 +40,35 @@ This branch builds the 24/7 shadow-learning layer without changing the productio
 - One hourly orchestration command is prepared: `npm run learning:hourly`.
 - Deployment blueprint is documented but not applied.
 
+## Sprint 4 — event-driven AI reasoning bridge
+
+- Pending material events can be claimed safely with PostgreSQL row locking.
+- Stale processing claims are automatically requeued after a configurable timeout.
+- Old material events are skipped instead of producing hindsight-contaminated decisions.
+- A normalized reasoning packet contains:
+  - current and recent market features;
+  - material-event context;
+  - deterministic persistence evidence;
+  - point-in-time portfolio context;
+  - only decisions/watchdog events known at the snapshot time.
+- Provider packet redaction removes absolute portfolio value, exact cash and exact quantities before any external AI call.
+- OpenAI Responses API support is optional and disabled by default.
+- Structured JSON output is enforced through a JSON Schema.
+- Web search is optional; however, any position-changing proposal is rejected unless:
+  - macro status is verified;
+  - at least two macro sources are supplied;
+  - at least one source is a trusted primary domain or Reuters;
+  - provider output actually attests the cited URLs.
+- The AI cannot activate a kill-switch.
+- BUY reward/risk is recalculated deterministically from current price, invalidation and target.
+- BUY invalidation must be below entry and target above entry.
+- Requested risk is capped deterministically before paper sizing.
+- Defensive actions use persistence computed from stored observations, not model claims.
+- Duplicate proposals for the same asset in one reasoning run are rejected.
+- Accepted and rejected proposals, validation reasons, provider metadata and usage are persisted in `learning_reasoning_runs`.
+- The hourly cycle now includes the reasoner between collection and paper-fill synchronization.
+- Real-money execution remains impossible.
+
 ## Safety invariants
 
 1. No exchange writes and no Bitso private credentials.
@@ -55,6 +84,7 @@ This branch builds the 24/7 shadow-learning layer without changing the productio
 
 - `npm run learning:db:init`
 - `npm run learning:collector`
+- `npm run learning:reasoner`
 - `npm run learning:portfolio:seed`
 - `npm run learning:paper:fill`
 - `npm run learning:portfolio:mark`
@@ -75,16 +105,31 @@ Core learning:
 Private one-time portfolio seed:
 - `LEARNING_INITIAL_PORTFOLIO_JSON`
 
+Reasoning bridge:
+- `LEARNING_REASONING_ENABLED=false` — must be explicitly changed to `true`.
+- `LEARNING_REASONING_PROVIDER=disabled|mock|openai_responses`.
+- `LEARNING_REASONING_MODEL` — required for OpenAI provider; no model is hard-coded.
+- `OPENAI_API_KEY` — secret, never commit.
+- `OPENAI_BASE_URL` — defaults to the OpenAI API base URL.
+- `LEARNING_REASONING_WEB_SEARCH=false` — enable only when fresh macro verification is desired.
+- `LEARNING_REASONING_MAX_ITEMS=3`.
+- `LEARNING_REASONING_MAX_OUTPUT_TOKENS=1800`.
+- `LEARNING_REASONING_MAX_EVENT_AGE_HOURS=6`.
+- `LEARNING_REASONING_STALE_MINUTES=30`.
+- `LEARNING_MACRO_MAX_AGE_HOURS=12`.
+- deterministic sizing/risk caps remain configurable but are enforced after AI output.
+
 Do not commit portfolio quantities or credentials. Existing CMC/Bitso/DefiLlama environment variables remain unchanged.
 
 ## Next sprint
 
-Sprint 4 should focus on the reasoning bridge:
-- consume pending material-event queue items;
-- build a normalized decision packet;
-- add event-driven AI reasoning without calling a model on every hourly observation;
-- validate every AI proposal through the deterministic Sprint 2 risk contract;
-- persist accepted/rejected shadow decisions and their decision-quality score;
-- keep real-money execution disabled.
+Sprint 5 should focus on shadow go-live readiness rather than adding more model intelligence:
+- deployment-grade configuration validation;
+- PostgreSQL migrations/backup/retention policy;
+- health and cost telemetry;
+- full dry-run cycle using mock reasoning;
+- optional OpenAI event-driven reasoning canary;
+- source-quality and provider-failure monitoring;
+- deployment checklist for Render without enabling exchange execution.
 
-No Render deployment and no real-money execution are included in Sprint 3.
+No Render deployment and no real-money execution are included in Sprint 4.
