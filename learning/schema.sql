@@ -138,3 +138,27 @@ create table if not exists learning_watchdog_events (
   fingerprint text not null unique,
   created_at timestamptz not null default now()
 );
+
+
+create table if not exists learning_reasoning_runs (
+  id bigserial primary key,
+  queue_id bigint not null references learning_decision_queue(id),
+  provider text not null,
+  model text,
+  status text not null check (status in ('started','completed','rejected','error','skipped')),
+  request_packet jsonb not null,
+  response_payload jsonb,
+  validation_summary jsonb,
+  accepted_decision_ids jsonb not null default '[]'::jsonb,
+  rejected_proposals jsonb not null default '[]'::jsonb,
+  usage jsonb,
+  error_message text,
+  started_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+create index if not exists learning_reasoning_runs_queue_idx
+  on learning_reasoning_runs (queue_id, started_at desc);
+
+create index if not exists learning_reasoning_runs_status_idx
+  on learning_reasoning_runs (status, started_at desc);
