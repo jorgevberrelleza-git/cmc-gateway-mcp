@@ -110,7 +110,8 @@ export function createReasoningProvider({
             }]
           },
           raw_response: { mock: true },
-          usage: null
+          usage: null,
+          evidence: { web_search_used: false, provider_attested_sources: false }
         };
       }
     };
@@ -138,6 +139,9 @@ export function createReasoningProvider({
         throw new Error(`reasoning_provider_http_${response.status}:${body?.error?.message || 'unknown_error'}`);
       }
       const text = outputText(body);
+      const webSearchUsed = (body.output || []).some(item =>
+        String(item?.type || '').includes('web_search')
+      );
       return {
         output: parseJson(text),
         raw_response: {
@@ -146,7 +150,11 @@ export function createReasoningProvider({
           model: body.model ?? model,
           output: body.output ?? null
         },
-        usage: body.usage ?? null
+        usage: body.usage ?? null,
+        evidence: {
+          web_search_used: webSearchUsed,
+          provider_attested_sources: webSearchUsed
+        }
       };
     }
   };
