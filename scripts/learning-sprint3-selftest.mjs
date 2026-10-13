@@ -20,6 +20,34 @@ const snapshot = {
 };
 assert.deepEqual(extractUsdPrices(snapshot), { BTC: 80000, AAVE: 160 });
 
+const v3Snapshot = {
+  snapshot_version: '0.6.2',
+  generated_at: '2026-10-13T00:00:00Z',
+  assets: ['BTC','AAVE'],
+  quotes: {
+    structuredContent: {
+      data: [
+        { id: 1, symbol: 'BTC', quote: [{ symbol: 'USD', price: 80123, percent_change_24h: 1.2 }] },
+        { id: 7278, symbol: 'AAVE', quote: [{ symbol: 'USD', price: 161.5, percent_change_24h: -0.8 }] }
+      ]
+    }
+  }
+};
+assert.deepEqual(extractUsdPrices(v3Snapshot), { BTC: 80123, AAVE: 161.5 });
+
+const v3MapSnapshot = {
+  ...v3Snapshot,
+  quotes: {
+    structuredContent: {
+      data: {
+        '1': { id: 1, symbol: 'BTC', quote: [{ symbol: 'USD', price: 80200 }] },
+        '7278': { id: 7278, symbol: 'AAVE', quote: [{ symbol: 'USD', price: 162 }] }
+      }
+    }
+  }
+};
+assert.deepEqual(extractUsdPrices(v3MapSnapshot), { BTC: 80200, AAVE: 162 });
+
 const materialEvent = {
   material: true,
   reasons: ['BTC:price_move_3.20pct', 'BTC:gate_NORMAL_REVIEW_to_BLOCK_NEW_ENTRY'],
