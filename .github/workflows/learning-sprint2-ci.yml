@@ -102,5 +102,8 @@ jobs:
       - name: Runtime health check
         run: npm run learning:health
 
+      - name: Shadow go-live readiness gate
+        run: npm run learning:readiness
+
       - name: Retention/storage report
         run: npm run learning:retention:report
