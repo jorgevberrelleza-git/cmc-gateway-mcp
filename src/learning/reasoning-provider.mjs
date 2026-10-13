@@ -35,9 +35,11 @@ export function buildOpenAIRequest(packet, {
   enableWebSearch = String(process.env.LEARNING_REASONING_WEB_SEARCH || 'false').toLowerCase() === 'true'
 } = {}) {
   if (!model) throw new Error('LEARNING_REASONING_MODEL is required');
+  const maxOutputTokens = Math.max(500, Math.min(4000, Number(process.env.LEARNING_REASONING_MAX_OUTPUT_TOKENS || 1800)));
   const body = {
     model,
     store: false,
+    max_output_tokens: maxOutputTokens,
     instructions: reasoningSystemInstructions(),
     input: [{
       role: 'user',
