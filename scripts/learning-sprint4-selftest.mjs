@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildReasoningPacket } from '../src/learning/reasoning-packet.mjs';
+import { buildReasoningPacket, sanitizeReasoningPacketForProvider } from '../src/learning/reasoning-packet.mjs';
 import { buildOpenAIRequest, createReasoningProvider } from '../src/learning/reasoning-provider.mjs';
 import { validateReasoningProposal, assessReasoningProposal } from '../src/learning/reasoning-bridge.mjs';
 
@@ -61,6 +61,13 @@ const packet = buildReasoningPacket({
 });
 assert.equal(packet.policy.execution_enabled, false);
 assert.equal(packet.deterministic_persistence_by_asset.BTC.confirmed, true);
+
+const safePacket = sanitizeReasoningPacketForProvider(packet);
+assert.equal(safePacket.portfolio.absolute_capital_redacted, true);
+assert.equal(safePacket.portfolio.cash_usd, undefined);
+assert.equal(safePacket.portfolio.total_value_usd, undefined);
+assert.equal(safePacket.portfolio.positions.BTC.quantity, undefined);
+assert.ok(safePacket.portfolio.positions.BTC.weight_pct > 0);
 
 const request = buildOpenAIRequest(packet, { model: 'test-model', enableWebSearch: true });
 assert.equal(request.store, false);
