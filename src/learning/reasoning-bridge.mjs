@@ -25,9 +25,20 @@ function portfolioPosition(packet, asset) {
   return packet?.portfolio?.positions?.[String(asset || '').toUpperCase()] || null;
 }
 
+function normalizedUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    url.hash = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+}
+
 export function validateReasoningProposal(proposal = {}, packet = {}, {
   maxMacroAgeHours = 12,
-  macroSourceAttested = false
+  macroSourceAttested = false,
+  attestedMacroUrls = []
 } = {}) {
   const asset = String(proposal.asset || '').toUpperCase();
   const action = String(proposal.action || '').toUpperCase();
@@ -49,6 +60,11 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
     }
   });
   const highQualitySources = validSourceUrls.filter(x => ['primary','reuters'].includes(String(x?.kind || '').toLowerCase()));
+  const attestedSet = new Set((Array.isArray(attestedMacroUrls) ? attestedMacroUrls : [])
+    .map(normalizedUrl)
+    .filter(Boolean));
+  const matchedSources = validSourceUrls.filter(x => attestedSet.has(normalizedUrl(x.url)));
+  const matchedHighQualitySources = matchedSources.filter(x => ['primary','reuters'].includes(String(x?.kind || '').toLowerCase()));
   const macro = validateMacroContext(macroRaw);
   const macroAge = freshnessHours(macroRaw.observed_at, packet?.market?.generated_at);
   const positionChanging = action !== 'HOLD';
@@ -64,6 +80,8 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
     if (validSourceUrls.length < 2) errors.push('position_change_requires_two_macro_sources');
     if (highQualitySources.length < 1) errors.push('position_change_requires_primary_or_reuters_macro_source');
     if (macroSourceAttested !== true) errors.push('macro_source_attestation_required');
+    if (matchedSources.length < 2) errors.push('macro_sources_not_attested_in_provider_output');
+    if (matchedHighQualitySources.length < 1) errors.push('high_quality_macro_source_not_attested');
   }
 
   let deterministicRewardRisk = num(proposal.reward_risk);
@@ -142,7 +160,9 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
       age_hours: macroAge,
       valid_source_count: validSourceUrls.length,
       high_quality_source_count: highQualitySources.length,
-      provider_source_attested: macroSourceAttested === true
+      provider_source_attested: macroSourceAttested === true,
+      matched_attested_source_count: matchedSources.length,
+      matched_high_quality_source_count: matchedHighQualitySources.length
     }
   };
 }
