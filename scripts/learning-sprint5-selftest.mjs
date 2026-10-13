@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { validateShadowRuntimeConfig } from '../src/learning/runtime-config.mjs';
 import { summarizeReasoningCost, buildRuntimeHealth, estimateReasoningRequestCeilingUsd, evaluateMonthlyReasoningBudget } from '../src/learning/runtime-telemetry.mjs';
+import { fillMissingUsdPrices } from '../src/learning/valuation-fallback.mjs';
 
 const safe = validateShadowRuntimeConfig({
   DATABASE_URL: 'postgresql://example',
@@ -134,6 +135,26 @@ const paidBudgetConfigured = validateShadowRuntimeConfig({
   LEARNING_REASONING_WEB_SEARCH: 'false'
 });
 assert.equal(paidBudgetConfigured.ready_for_shadow, true);
+
+const fallback = await fillMissingUsdPrices(
+  { BTC: 80000 },
+  ['BTC','AAVE','ADA'],
+  async () => ({
+    ok: true,
+    async json() {
+      return {
+        coins: {
+          'coingecko:aave': { price: 166 },
+          'coingecko:cardano': { price: 0.42 }
+        }
+      };
+    }
+  })
+);
+assert.equal(fallback.prices.BTC, 80000);
+assert.equal(fallback.prices.AAVE, 166);
+assert.equal(fallback.prices.ADA, 0.42);
+assert.equal(fallback.fallback_used, true);
 
 const now = new Date('2026-10-13T12:00:00Z');
 const healthy = buildRuntimeHealth({
