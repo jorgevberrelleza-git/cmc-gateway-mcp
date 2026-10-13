@@ -19,6 +19,9 @@ Status: **COMPLETE FOR PRE-DEPLOYMENT / RENDER UNCHANGED / NO REAL-MONEY EXECUTI
 - Runtime telemetry for hourly cycles.
 - Runtime health report.
 - Reasoning cost report with externally supplied pricing assumptions.
+- Monthly AI budget guard with conservative pre-call reservation.
+- Monthly reasoning-run limit as a second runaway-spend guard.
+- Optional total-budget and fixed-infrastructure planning ceilings.
 - Storage/retention report with no destructive deletion.
 - Mock provider canary with network disabled by default.
 - OpenAI canary requires explicit network opt-in.
