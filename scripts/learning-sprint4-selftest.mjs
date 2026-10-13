@@ -123,7 +123,7 @@ const validDefensive = assessReasoningProposal({
   data_confidence: 85,
   source_conflict: false,
   kill_switch: false
-}, packet);
+}, packet, { macroSourceAttested: true });
 assert.equal(validDefensive.accepted, true);
 assert.equal(validDefensive.paper_order.side, 'sell');
 assert.ok(validDefensive.paper_order.quantity > 0);
@@ -186,7 +186,7 @@ const buy = assessReasoningProposal({
   data_confidence: 90,
   source_conflict: false,
   kill_switch: false
-}, buyPacket, { maxRiskPct: 0.01 });
+}, buyPacket, { maxRiskPct: 0.01, macroSourceAttested: true });
 assert.equal(buy.accepted, true);
 assert.equal(Number(buy.validation.normalized.reward_risk.toFixed(2)), 3);
 assert.ok(buy.paper_order.risk_budget_usd <= 100.000001);
@@ -238,6 +238,25 @@ const unverifiedAction = validateReasoningProposal({
 assert.equal(unverifiedAction.ok, false);
 assert.ok(unverifiedAction.errors.includes('macro_context_not_verified_for_position_change'));
 assert.ok(unverifiedAction.errors.includes('position_change_requires_two_macro_sources'));
+
+const unattestedAction = validateReasoningProposal({
+  asset: 'BTC',
+  action: 'BUY',
+  thesis: { reason: 'URLs claimed but provider tool did not attest them', confirmations: [], invalidations: [] },
+  evidence_families: ['structure','macro','flow'],
+  reward_risk: 3,
+  entry_price_usd: 78000,
+  invalidation_price_usd: 74000,
+  target_price_usd: 90000,
+  reduction_pct: null,
+  risk_pct: 0.005,
+  macro_context: { ...baseMacro, regime: 'favorable', liquidity: 'expanding', shock_risk: 'low' },
+  data_confidence: 80,
+  source_conflict: false,
+  kill_switch: false
+}, buyPacket);
+assert.equal(unattestedAction.ok, false);
+assert.ok(unattestedAction.errors.includes('macro_source_attestation_required'));
 
 const holdOnMissingMacro = validateReasoningProposal({
   asset: 'BTC',
