@@ -24,9 +24,24 @@ function parsePayload(result) {
   }
   return null;
 }
+function flattenQuoteAsset(asset) {
+  if (!asset || typeof asset !== 'object') return null;
+  const quoteRaw = asset.quote;
+  let usd = null;
+  if (Array.isArray(quoteRaw)) {
+    usd = quoteRaw.find(q => String(q?.symbol || q?.convert_symbol || '').toUpperCase() === 'USD') || quoteRaw[0] || null;
+  } else if (quoteRaw && typeof quoteRaw === 'object') {
+    usd = quoteRaw.USD || quoteRaw.usd || Object.values(quoteRaw)[0] || null;
+  }
+  return {
+    ...asset,
+    ...(usd && typeof usd === 'object' ? usd : {})
+  };
+}
+
 function normalizeQuoteRowsPayload(p) {
   if (!p) return [];
-  if (Array.isArray(p)) return p.flatMap(normalizeQuoteRowsPayload);
+  if (Array.isArray(p)) return p.map(flattenQuoteAsset).filter(Boolean);
 
   if (Array.isArray(p.rows) && Array.isArray(p.headers)) {
     return p.rows.map(row => Object.fromEntries(p.headers.map((h, i) => [h, row?.[i]])));
@@ -36,28 +51,17 @@ function normalizeQuoteRowsPayload(p) {
     const records = Array.isArray(p.data)
       ? p.data
       : (typeof p.data === 'object' ? Object.values(p.data) : []);
-    const out = [];
-    for (const asset of records) {
-      if (!asset || typeof asset !== 'object') continue;
-      const quoteRaw = asset.quote;
-      let usd = null;
-      if (Array.isArray(quoteRaw)) {
-        usd = quoteRaw.find(q => String(q?.symbol || q?.convert_symbol || '').toUpperCase() === 'USD') || quoteRaw[0] || null;
-      } else if (quoteRaw && typeof quoteRaw === 'object') {
-        usd = quoteRaw.USD || quoteRaw.usd || Object.values(quoteRaw)[0] || null;
-      }
-      out.push({
-        ...asset,
-        ...(usd && typeof usd === 'object' ? usd : {})
-      });
-    }
+    const out = records.map(flattenQuoteAsset).filter(Boolean);
     if (out.length) return out;
   }
 
   if (p.result != null) return normalizeQuoteRowsPayload(p.result);
+  if (p.symbol || p.quote) {
+    const single = flattenQuoteAsset(p);
+    return single ? [single] : [];
+  }
   return [];
 }
-
 function quoteRows(quotes) {
   return normalizeQuoteRowsPayload(parsePayload(quotes));
 }
