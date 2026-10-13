@@ -259,7 +259,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     const result = await pool.query(
       `select d.*, po.id as paper_order_id, po.symbol as order_symbol, po.side as order_side,
               po.quantity, po.notional_usd, po.reference_price_usd, po.estimated_fee_usd,
-              po.estimated_slippage_bps, s.generated_at as snapshot_generated_at
+              po.estimated_slippage_bps, s.generated_at as snapshot_generated_at, s.payload as decision_snapshot_payload
        from learning_decisions d
        join learning_snapshots s on s.id = d.snapshot_id
        left join lateral (
