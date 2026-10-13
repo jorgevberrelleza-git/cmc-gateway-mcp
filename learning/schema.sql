@@ -68,6 +68,9 @@ create table if not exists learning_paper_orders (
 create index if not exists learning_paper_orders_decision_idx
   on learning_paper_orders (decision_id);
 
+create unique index if not exists learning_paper_orders_decision_symbol_unique
+  on learning_paper_orders (decision_id, symbol);
+
 create table if not exists learning_outcomes (
   id bigserial primary key,
   decision_id bigint not null references learning_decisions(id),
