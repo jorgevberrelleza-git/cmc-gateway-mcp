@@ -97,7 +97,12 @@ export function createReasoningProvider({
                 shock_risk: 'medium',
                 observed_at: observedAt,
                 evidence: ['mock macro evidence one', 'mock macro evidence two'],
-                source_quality: 'mock'
+                source_quality: 'mock',
+                verification_status: 'verified',
+                sources: [
+                  { name: 'mock-primary', url: 'https://example.com/primary', kind: 'primary', published_at: observedAt },
+                  { name: 'mock-reuters', url: 'https://example.com/reuters', kind: 'reuters', published_at: observedAt }
+                ]
               },
               data_confidence: 50,
               source_conflict: false,
