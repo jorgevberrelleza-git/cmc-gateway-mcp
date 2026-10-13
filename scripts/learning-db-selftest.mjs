@@ -166,6 +166,41 @@ try {
   const done = await store.finishQueueItem(claimed.id, { status: 'processed', decisionId: decision.id });
   assert.equal(done.status, 'processed');
 
+  const filteredDecisions = await store.listDecisions({
+    from: new Date(Date.parse(snapshot.generated_at) - 60_000).toISOString(),
+    to: new Date(Date.parse(snapshot.generated_at) + 60_000).toISOString(),
+    limit: 20
+  });
+  assert.ok(filteredDecisions.some(x => Number(x.id) === Number(decision.id)));
+
+  const filteredWatchdog = await store.listWatchdogEvents({
+    from: new Date(Date.parse(snapshot.generated_at) - 60_000).toISOString(),
+    to: new Date(Date.parse(snapshot.generated_at) + 60_000).toISOString(),
+    limit: 20
+  });
+  assert.ok(filteredWatchdog.some(x => Number(x.id) === Number(watchdog.id)));
+
+  const cycleKey = `db-selftest-cycle-${savedSnapshot.id}`;
+  const runtimeCycle = await store.saveRuntimeCycle({
+    cycleKey,
+    startedAt: snapshot.generated_at,
+    completedAt: new Date(Date.parse(snapshot.generated_at) + 1000).toISOString(),
+    status: 'success',
+    durationMs: 1000,
+    steps: [{ name: 'selftest', ok: true, duration_ms: 1000 }],
+    configFingerprint: 'db-selftest'
+  });
+  assert.ok(runtimeCycle.id);
+  assert.equal(runtimeCycle.execution_enabled, false);
+
+  const cycles = await store.recentRuntimeCycles(10);
+  assert.ok(cycles.some(x => x.cycle_key === cycleKey));
+
+  const stats = await store.databaseStats();
+  assert.ok(stats.tables.learning_snapshots >= 1);
+  assert.ok(stats.tables.learning_runtime_cycles >= 1);
+  assert.ok(stats.database_bytes > 0);
+
   const queued2 = await store.enqueueDecisionReview({
     snapshotId: savedSnapshot.id,
     queueKey: `db-selftest-release:${savedSnapshot.id}`,
