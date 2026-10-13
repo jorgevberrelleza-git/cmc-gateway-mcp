@@ -346,6 +346,17 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows;
   }
 
+  async function portfolioMarkAtOrBefore(timestamp) {
+    const result = await pool.query(
+      `select * from learning_portfolio_marks
+       where marked_at <= $1
+       order by marked_at desc
+       limit 1`,
+      [timestamp]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async function evaluatedHorizons(decisionId) {
     const result = await pool.query(
       `select horizon from learning_outcomes where decision_id = $1 order by evaluated_at asc`,
@@ -544,6 +555,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     ledgerEvents,
     savePortfolioMark,
     recentPortfolioMarks,
+    portfolioMarkAtOrBefore,
     evaluatedHorizons,
     outcomeCandidates,
     saveOutcome,
