@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { validateShadowRuntimeConfig } from '../src/learning/runtime-config.mjs';
-import { summarizeReasoningCost, buildRuntimeHealth } from '../src/learning/runtime-telemetry.mjs';
+import { summarizeReasoningCost, buildRuntimeHealth, estimateReasoningRequestCeilingUsd, evaluateMonthlyReasoningBudget } from '../src/learning/runtime-telemetry.mjs';
 
 const safe = validateShadowRuntimeConfig({
   DATABASE_URL: 'postgresql://example',
@@ -67,6 +67,73 @@ const cost = summarizeReasoningCost([
   web_search_usd_per_call: 0.01
 });
 assert.equal(cost.estimated_usd, 6.01);
+
+const requestCeiling = estimateReasoningRequestCeilingUsd({
+  packet: { market: { asset: 'BTC' }, portfolio: { cash_pct: 20 } },
+  max_output_tokens: 1800,
+  web_search_enabled: true,
+  web_search_reserve_calls: 3
+}, {
+  input_usd_per_million_tokens: 2,
+  output_usd_per_million_tokens: 8,
+  web_search_usd_per_call: 0.01
+});
+assert.ok(requestCeiling.estimated_request_ceiling_usd > 0);
+
+const budgetOk = evaluateMonthlyReasoningBudget({
+  runs: [],
+  monthly_ai_budget_usd: 10,
+  monthly_reasoning_run_limit: 100,
+  request_ceiling_usd: 0.50,
+  alert_pct: 80,
+  rates: {
+    input_usd_per_million_tokens: 2,
+    output_usd_per_million_tokens: 8,
+    web_search_usd_per_call: 0.01
+  }
+});
+assert.equal(budgetOk.allowed, true);
+
+const budgetBlocked = evaluateMonthlyReasoningBudget({
+  runs: [{ usage: { input_tokens: 1000000, output_tokens: 1000000 } }],
+  monthly_ai_budget_usd: 5,
+  monthly_reasoning_run_limit: 100,
+  request_ceiling_usd: 0.50,
+  rates: {
+    input_usd_per_million_tokens: 2,
+    output_usd_per_million_tokens: 8,
+    web_search_usd_per_call: 0
+  }
+});
+assert.equal(budgetBlocked.allowed, false);
+assert.equal(budgetBlocked.reason, 'monthly_ai_budget_would_be_exceeded');
+
+const paidBudgetMissing = validateShadowRuntimeConfig({
+  DATABASE_URL: 'postgresql://example',
+  LEARNING_REASONING_ENABLED: 'true',
+  LEARNING_REASONING_PROVIDER: 'openai_responses',
+  OPENAI_API_KEY: 'test',
+  LEARNING_REASONING_MODEL: 'test-model',
+  LEARNING_COST_INPUT_USD_PER_MILLION: '2',
+  LEARNING_COST_OUTPUT_USD_PER_MILLION: '8'
+});
+assert.equal(paidBudgetMissing.ready_for_shadow, false);
+assert.ok(paidBudgetMissing.errors.includes('LEARNING_MONTHLY_AI_BUDGET_USD_required_for_openai_reasoning'));
+
+const paidBudgetConfigured = validateShadowRuntimeConfig({
+  DATABASE_URL: 'postgresql://example',
+  LEARNING_REASONING_ENABLED: 'true',
+  LEARNING_REASONING_PROVIDER: 'openai_responses',
+  OPENAI_API_KEY: 'test',
+  LEARNING_REASONING_MODEL: 'test-model',
+  LEARNING_MONTHLY_AI_BUDGET_USD: '10',
+  LEARNING_MONTHLY_TOTAL_BUDGET_USD: '25',
+  LEARNING_MONTHLY_INFRA_BUDGET_USD: '15',
+  LEARNING_COST_INPUT_USD_PER_MILLION: '2',
+  LEARNING_COST_OUTPUT_USD_PER_MILLION: '8',
+  LEARNING_REASONING_WEB_SEARCH: 'false'
+});
+assert.equal(paidBudgetConfigured.ready_for_shadow, true);
 
 const now = new Date('2026-10-13T12:00:00Z');
 const healthy = buildRuntimeHealth({
