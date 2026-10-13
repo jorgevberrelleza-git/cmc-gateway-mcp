@@ -16,6 +16,20 @@ function parseJson(text) {
   catch { throw new Error('reasoning_provider_returned_invalid_json'); }
 }
 
+function attestedUrls(response) {
+  const urls = new Set();
+  for (const item of response?.output || []) {
+    for (const part of item?.content || []) {
+      for (const annotation of part?.annotations || []) {
+        if (annotation?.type === 'url_citation' && typeof annotation.url === 'string') {
+          urls.add(annotation.url);
+        }
+      }
+    }
+  }
+  return [...urls];
+}
+
 export function buildOpenAIRequest(packet, {
   model = process.env.LEARNING_REASONING_MODEL,
   enableWebSearch = String(process.env.LEARNING_REASONING_WEB_SEARCH || 'false').toLowerCase() === 'true'
@@ -111,7 +125,7 @@ export function createReasoningProvider({
           },
           raw_response: { mock: true },
           usage: null,
-          evidence: { web_search_used: false, provider_attested_sources: false }
+          evidence: { web_search_used: false, provider_attested_sources: false, attested_urls: [] }
         };
       }
     };
@@ -142,6 +156,7 @@ export function createReasoningProvider({
       const webSearchUsed = (body.output || []).some(item =>
         String(item?.type || '').includes('web_search')
       );
+      const urls = attestedUrls(body);
       return {
         output: parseJson(text),
         raw_response: {
@@ -153,7 +168,8 @@ export function createReasoningProvider({
         usage: body.usage ?? null,
         evidence: {
           web_search_used: webSearchUsed,
-          provider_attested_sources: webSearchUsed
+          provider_attested_sources: webSearchUsed && urls.length > 0,
+          attested_urls: urls
         }
       };
     }
