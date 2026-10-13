@@ -22,6 +22,9 @@ try {
   });
   assert.ok(savedSnapshot.id);
 
+  const byId = await store.getSnapshotById(savedSnapshot.id);
+  assert.equal(Number(byId.id), Number(savedSnapshot.id));
+
   const nearest = await store.nearestSnapshot(snapshot.generated_at, 60 * 60 * 1000);
   assert.equal(Number(nearest.id), Number(savedSnapshot.id));
 
@@ -32,6 +35,18 @@ try {
     materialEvent: { material: true, reasons: ['BTC:price_move_3.00pct'] }
   });
   assert.equal(queued.status, 'pending');
+
+  const claimed = await store.claimNextDecisionQueue();
+  assert.equal(Number(claimed.id), Number(queued.id));
+  assert.equal(claimed.status, 'processing');
+
+  const reasoningRun = await store.startReasoningRun({
+    queueId: claimed.id,
+    provider: 'mock',
+    model: 'mock',
+    requestPacket: { queue_id: claimed.id, execution_enabled: false }
+  });
+  assert.equal(reasoningRun.status, 'started');
 
   const decision = await store.saveDecision({
     decisionKey: `DBTEST-${savedSnapshot.id}`,
@@ -45,6 +60,9 @@ try {
   });
   assert.ok(decision.id);
 
+  const sameDecision = await store.getDecisionByKey(`DBTEST-${savedSnapshot.id}`);
+  assert.equal(Number(sameDecision.id), Number(decision.id));
+
   const order = await store.savePaperOrder({
     decisionId: decision.id,
     symbol: 'BTC',
@@ -56,6 +74,16 @@ try {
     estimatedSlippageBps: 5
   });
   assert.ok(order.id);
+
+  const duplicateOrder = await store.savePaperOrder({
+    decisionId: decision.id,
+    symbol: 'BTC',
+    side: 'buy',
+    quantity: 0.002,
+    notionalUsd: 160,
+    referencePriceUsd: 80000
+  });
+  assert.equal(duplicateOrder, undefined);
 
   const unledgered = await store.unledgeredPaperOrders();
   assert.ok(unledgered.some(x => Number(x.id) === Number(order.id)));
@@ -119,8 +147,33 @@ try {
   });
   assert.ok(watchdog.id);
 
-  const done = await store.finishQueueItem(queued.id, { status: 'processed', decisionId: decision.id });
+  const finishedRun = await store.finishReasoningRun(reasoningRun.id, {
+    status: 'completed',
+    responsePayload: { output: { proposals: [{ asset: 'BTC', action: 'HOLD' }] } },
+    validationSummary: [{ accepted: true }],
+    acceptedDecisionIds: [decision.id],
+    rejectedProposals: [],
+    usage: { input_tokens: 10, output_tokens: 5 }
+  });
+  assert.equal(finishedRun.status, 'completed');
+
+  const runs = await store.listReasoningRuns({ limit: 10 });
+  assert.ok(runs.some(x => Number(x.id) === Number(reasoningRun.id)));
+
+  const done = await store.finishQueueItem(claimed.id, { status: 'processed', decisionId: decision.id });
   assert.equal(done.status, 'processed');
+
+  const queued2 = await store.enqueueDecisionReview({
+    snapshotId: savedSnapshot.id,
+    queueKey: `db-selftest-release:${savedSnapshot.id}`,
+    priority: 74,
+    materialEvent: { material: true, reasons: ['BTC:spot_delta_25'] }
+  });
+  assert.equal(queued2.status, 'pending');
+  const claimed2 = await store.claimNextDecisionQueue();
+  assert.equal(Number(claimed2.id), Number(queued2.id));
+  const released = await store.releaseQueueItem(claimed2.id, { errorMessage: 'transient_test' });
+  assert.equal(released.status, 'pending');
 
   console.log('learning-db-selftest: ok');
 } finally {
