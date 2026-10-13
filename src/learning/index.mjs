@@ -17,3 +17,5 @@ export { buildReasoningPacket, sanitizeReasoningPacketForProvider } from './reas
 export { REASONING_OUTPUT_SCHEMA, reasoningSystemInstructions } from './reasoning-schema.mjs';
 export { buildOpenAIRequest, createReasoningProvider } from './reasoning-provider.mjs';
 export { validateReasoningProposal, buildDeterministicPaperOrder, assessReasoningProposal } from './reasoning-bridge.mjs';
+export { validateShadowRuntimeConfig } from './runtime-config.mjs';
+export { summarizeReasoningCost, buildRuntimeHealth } from './runtime-telemetry.mjs';
