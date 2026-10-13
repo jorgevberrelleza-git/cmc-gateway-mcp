@@ -2,10 +2,6 @@ import { extractUsdPrices } from '../src/learning/features.mjs';
 import { createSeedLedgerEvents } from '../src/learning/portfolio-ledger.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
 
-const raw = process.env.LEARNING_INITIAL_PORTFOLIO_JSON;
-if (!raw) throw new Error('LEARNING_INITIAL_PORTFOLIO_JSON is required and must not be committed to the repository');
-
-const seed = JSON.parse(raw);
 const store = createLearningStore();
 
 try {
@@ -13,6 +9,10 @@ try {
   if (existing.length) {
     console.log(JSON.stringify({ ok: true, seeded: false, reason: 'ledger_already_initialized', execution_enabled: false }));
   } else {
+    const raw = process.env.LEARNING_INITIAL_PORTFOLIO_JSON;
+    if (!raw) throw new Error('LEARNING_INITIAL_PORTFOLIO_JSON is required only until the shadow ledger is initialized');
+
+    const seed = JSON.parse(raw);
     const latest = await store.latestSnapshot();
     if (!latest) throw new Error('at least one stored snapshot is required before portfolio seed');
     const prices = extractUsdPrices(latest.payload || {});
