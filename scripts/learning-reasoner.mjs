@@ -1,4 +1,4 @@
-import { buildReasoningPacket } from '../src/learning/reasoning-packet.mjs';
+import { buildReasoningPacket, sanitizeReasoningPacketForProvider } from '../src/learning/reasoning-packet.mjs';
 import { createReasoningProvider } from '../src/learning/reasoning-provider.mjs';
 import { assessReasoningProposal } from '../src/learning/reasoning-bridge.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
@@ -17,9 +17,11 @@ if (!enabled) {
 const maxItems = Math.max(1, Math.min(10, Number(process.env.LEARNING_REASONING_MAX_ITEMS || 3)));
 const provider = createReasoningProvider();
 const store = createLearningStore();
-const summary = { claimed: 0, processed: 0, accepted_decisions: 0, rejected_proposals: 0, provider_errors: 0 };
+const summary = { claimed: 0, processed: 0, accepted_decisions: 0, rejected_proposals: 0, provider_errors: 0, stale_requeued: 0 };
 
 try {
+  const requeued = await store.requeueStaleDecisionQueue(Number(process.env.LEARNING_REASONING_STALE_MINUTES || 30));
+  summary.stale_requeued = requeued.length;
   for (let count = 0; count < maxItems; count++) {
     const queueItem = await store.claimNextDecisionQueue();
     if (!queueItem) break;
@@ -46,14 +48,15 @@ try {
         watchdogEvents
       });
 
+      const providerPacket = sanitizeReasoningPacketForProvider(packet);
       run = await store.startReasoningRun({
         queueId: queueItem.id,
         provider: provider.name,
         model: provider.model,
-        requestPacket: packet
+        requestPacket: providerPacket
       });
 
-      const reasoned = await provider.reason(packet);
+      const reasoned = await provider.reason(providerPacket);
       if (reasoned?.skipped) {
         await store.finishReasoningRun(run.id, {
           status: 'skipped',
