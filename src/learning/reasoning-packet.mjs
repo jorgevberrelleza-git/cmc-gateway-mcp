@@ -92,3 +92,38 @@ export function buildReasoningPacket({
     }
   };
 }
+
+
+export function sanitizeReasoningPacketForProvider(packet = {}) {
+  const portfolio = packet?.portfolio;
+  let safePortfolio = null;
+  if (portfolio && Number.isFinite(Number(portfolio.total_value_usd)) && Number(portfolio.total_value_usd) > 0) {
+    const total = Number(portfolio.total_value_usd);
+    const positions = {};
+    for (const [symbol, position] of Object.entries(portfolio.positions || {})) {
+      const value = Number(position?.value_usd);
+      positions[symbol] = {
+        weight_pct: Number.isFinite(value) ? (value / total) * 100 : null
+      };
+    }
+    safePortfolio = {
+      cash_pct: (Number(portfolio.cash_usd || 0) / total) * 100,
+      positions,
+      shadow_return_pct: portfolio.shadow_return_pct,
+      hodl_return_pct: portfolio.hodl_return_pct,
+      alpha_vs_hodl_pct: portfolio.alpha_vs_hodl_pct,
+      drawdown_pct: portfolio.drawdown_pct,
+      absolute_capital_redacted: true
+    };
+  }
+
+  return {
+    ...packet,
+    portfolio: safePortfolio,
+    provider_data_policy: {
+      absolute_capital_redacted: true,
+      exact_quantities_redacted: true,
+      deterministic_sizing_remains_local: true
+    }
+  };
+}
