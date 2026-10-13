@@ -153,6 +153,28 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows;
   }
 
+  async function unledgeredPaperOrders(limit = 200) {
+    const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 200));
+    const result = await pool.query(
+      `select po.*
+       from learning_paper_orders po
+       left join learning_portfolio_ledger l on l.paper_order_id = po.id
+       where l.id is null and po.state = 'proposed'
+       order by po.created_at asc, po.id asc
+       limit $1`,
+      [safeLimit]
+    );
+    return result.rows;
+  }
+
+  async function setPaperOrderState(id, state) {
+    const result = await pool.query(
+      `update learning_paper_orders set state = $2 where id = $1 returning *`,
+      [id, state]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async function enqueueDecisionReview({ snapshotId, queueKey, priority = 50, materialEvent }) {
     const result = await pool.query(
       `insert into learning_decision_queue (snapshot_id, queue_key, priority, material_event)
@@ -375,6 +397,8 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     listDecisions,
     savePaperOrder,
     paperOrdersForDecision,
+    unledgeredPaperOrders,
+    setPaperOrderState,
     enqueueDecisionReview,
     listDecisionQueue,
     finishQueueItem,
