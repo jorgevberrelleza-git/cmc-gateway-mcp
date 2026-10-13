@@ -1,9 +1,16 @@
 function parsePayload(block) {
-  if (block?.structuredContent != null) return block.structuredContent;
   if (Array.isArray(block)) return block;
+  const structured = block?.structuredContent ?? null;
   const text = block?.content?.find?.(item => item?.type === 'text')?.text;
-  if (!text || typeof text !== 'string') return null;
-  try { return JSON.parse(text); } catch { return null; }
+  let parsedText = null;
+  if (typeof text === 'string') {
+    try { parsedText = JSON.parse(text); } catch {}
+  }
+  if (structured != null && parsedText != null) {
+    return { structuredContent: structured, content_json: parsedText };
+  }
+  if (structured != null) return structured;
+  return parsedText;
 }
 
 function flattenQuoteAsset(asset) {
