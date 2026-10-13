@@ -2,6 +2,7 @@ import { buildReasoningPacket, sanitizeReasoningPacketForProvider } from '../src
 import { createReasoningProvider } from '../src/learning/reasoning-provider.mjs';
 import { assessReasoningProposal } from '../src/learning/reasoning-bridge.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
+import { monthWindowUtc, estimateReasoningRequestCeilingUsd, evaluateMonthlyReasoningBudget } from '../src/learning/runtime-telemetry.mjs';
 
 const enabled = String(process.env.LEARNING_REASONING_ENABLED || 'false').toLowerCase() === 'true';
 if (!enabled) {
@@ -18,7 +19,7 @@ const maxItems = Math.max(1, Math.min(10, Number(process.env.LEARNING_REASONING_
 const maxAttempts = Math.max(1, Math.min(10, Number(process.env.LEARNING_REASONING_MAX_ATTEMPTS || 3)));
 const provider = createReasoningProvider();
 const store = createLearningStore();
-const summary = { claimed: 0, processed: 0, accepted_decisions: 0, rejected_proposals: 0, provider_errors: 0, stale_requeued: 0 };
+const summary = { claimed: 0, processed: 0, accepted_decisions: 0, rejected_proposals: 0, provider_errors: 0, stale_requeued: 0, budget_skipped: 0, budget_alert: false };
 
 try {
   const requeued = await store.requeueStaleDecisionQueue(Number(process.env.LEARNING_REASONING_STALE_MINUTES || 30));
@@ -74,6 +75,56 @@ try {
         });
         summary.processed += 1;
         continue;
+      }
+
+      if (provider.name === 'openai_responses') {
+        const window = monthWindowUtc(new Date());
+        const monthlyRuns = await store.reasoningRunsBetween(window.start, window.end, 50000);
+        const rates = {
+          input_usd_per_million_tokens: process.env.LEARNING_COST_INPUT_USD_PER_MILLION,
+          output_usd_per_million_tokens: process.env.LEARNING_COST_OUTPUT_USD_PER_MILLION,
+          web_search_usd_per_call: process.env.LEARNING_COST_WEB_SEARCH_USD_PER_CALL
+        };
+        const requestCeiling = estimateReasoningRequestCeilingUsd({
+          packet: providerPacket,
+          max_output_tokens: Number(process.env.LEARNING_REASONING_MAX_OUTPUT_TOKENS || 1800),
+          web_search_enabled: String(process.env.LEARNING_REASONING_WEB_SEARCH || 'false').toLowerCase() === 'true',
+          web_search_reserve_calls: Number(process.env.LEARNING_BUDGET_WEB_SEARCH_RESERVE_CALLS || 3)
+        }, rates);
+        const budget = evaluateMonthlyReasoningBudget({
+          runs: monthlyRuns,
+          monthly_ai_budget_usd: process.env.LEARNING_MONTHLY_AI_BUDGET_USD,
+          monthly_reasoning_run_limit: process.env.LEARNING_MONTHLY_REASONING_RUN_LIMIT || 100,
+          request_ceiling_usd: requestCeiling.estimated_request_ceiling_usd,
+          alert_pct: process.env.LEARNING_BUDGET_ALERT_PCT || 80,
+          rates
+        });
+        summary.budget_alert = summary.budget_alert || budget.alert === true;
+
+        if (!budget.allowed) {
+          run = await store.startReasoningRun({
+            queueId: queueItem.id,
+            provider: provider.name,
+            model: provider.model,
+            requestPacket: providerPacket
+          });
+          await store.finishReasoningRun(run.id, {
+            status: 'skipped',
+            validationSummary: {
+              skipped: true,
+              reason: budget.reason,
+              monthly_budget: budget,
+              request_ceiling: requestCeiling
+            }
+          });
+          await store.finishQueueItem(queueItem.id, {
+            status: 'skipped',
+            errorMessage: `budget_guard:${budget.reason}`
+          });
+          summary.budget_skipped += 1;
+          summary.processed += 1;
+          continue;
+        }
       }
 
       run = await store.startReasoningRun({
