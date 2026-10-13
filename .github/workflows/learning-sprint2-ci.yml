@@ -42,6 +42,9 @@ jobs:
       - name: Sprint 4 learning self-test
         run: npm run learning:sprint4:selftest
 
+      - name: Sprint 5 learning self-test
+        run: npm run learning:sprint5:selftest
+
   postgres-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -76,8 +79,25 @@ jobs:
       - name: Install dependencies
         run: npm install --ignore-scripts
 
-      - name: Initialize learning schema
-        run: npm run learning:db:init
+      - name: Bootstrap and migrate learning schema
+        run: npm run learning:migrate
+
+      - name: Shadow configuration preflight
+        run: npm run learning:config:check
+
+      - name: Mock reasoning provider canary
+        run: npm run learning:provider:canary
+        env:
+          LEARNING_CANARY_PROVIDER: mock
+
+      - name: End-to-end shadow dry run
+        run: npm run learning:shadow:dryrun
 
       - name: PostgreSQL integration self-test
         run: npm run learning:db:selftest
+
+      - name: Runtime health check
+        run: npm run learning:health
+
+      - name: Retention/storage report
+        run: npm run learning:retention:report
