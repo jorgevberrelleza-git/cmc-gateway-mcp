@@ -123,7 +123,7 @@ const validDefensive = assessReasoningProposal({
   data_confidence: 85,
   source_conflict: false,
   kill_switch: false
-}, packet, { macroSourceAttested: true });
+}, packet, { macroSourceAttested: true, attestedMacroUrls: ['https://www.federalreserve.gov/example','https://www.reuters.com/example'] });
 assert.equal(validDefensive.accepted, true);
 assert.equal(validDefensive.paper_order.side, 'sell');
 assert.ok(validDefensive.paper_order.quantity > 0);
@@ -186,7 +186,7 @@ const buy = assessReasoningProposal({
   data_confidence: 90,
   source_conflict: false,
   kill_switch: false
-}, buyPacket, { maxRiskPct: 0.01, macroSourceAttested: true });
+}, buyPacket, { maxRiskPct: 0.01, macroSourceAttested: true, attestedMacroUrls: ['https://www.federalreserve.gov/example','https://www.reuters.com/example'] });
 assert.equal(buy.accepted, true);
 assert.equal(Number(buy.validation.normalized.reward_risk.toFixed(2)), 3);
 assert.ok(buy.paper_order.risk_budget_usd <= 100.000001);
