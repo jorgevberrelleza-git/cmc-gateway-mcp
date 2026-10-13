@@ -8,12 +8,17 @@ async function pass(tool, args = {}) {
 
 
 function parseCompactPayload(result) {
-  if (result?.structuredContent != null) return result.structuredContent;
+  const structured = result?.structuredContent ?? null;
+  let parsedText = null;
   for (const block of result?.content || []) {
     if (block?.type !== 'text') continue;
-    try { return JSON.parse(block.text); } catch {}
+    try { parsedText = JSON.parse(block.text); break; } catch {}
   }
-  return null;
+  if (structured != null && parsedText != null) {
+    return { structuredContent: structured, content_json: parsedText };
+  }
+  if (structured != null) return structured;
+  return parsedText;
 }
 
 function flattenQuoteAsset(asset) {
