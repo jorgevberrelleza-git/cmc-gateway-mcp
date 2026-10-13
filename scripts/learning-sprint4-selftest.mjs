@@ -258,6 +258,37 @@ const unattestedAction = validateReasoningProposal({
 assert.equal(unattestedAction.ok, false);
 assert.ok(unattestedAction.errors.includes('macro_source_attestation_required'));
 
+const mislabeledPrimary = validateReasoningProposal({
+  asset: 'BTC',
+  action: 'BUY',
+  thesis: { reason: 'untrusted site mislabeled as primary', confirmations: [], invalidations: [] },
+  evidence_families: ['structure','macro','flow'],
+  reward_risk: 3,
+  entry_price_usd: 78000,
+  invalidation_price_usd: 74000,
+  target_price_usd: 90000,
+  reduction_pct: null,
+  risk_pct: 0.005,
+  macro_context: {
+    ...baseMacro,
+    regime: 'favorable',
+    liquidity: 'expanding',
+    shock_risk: 'low',
+    sources: [
+      { name: 'random', url: 'https://random.example/a', kind: 'primary', published_at: '2026-10-13T05:30:00Z' },
+      { name: 'secondary', url: 'https://secondary.example/b', kind: 'reputable_secondary', published_at: '2026-10-13T05:45:00Z' }
+    ]
+  },
+  data_confidence: 80,
+  source_conflict: false,
+  kill_switch: false
+}, buyPacket, {
+  macroSourceAttested: true,
+  attestedMacroUrls: ['https://random.example/a','https://secondary.example/b']
+});
+assert.equal(mislabeledPrimary.ok, false);
+assert.ok(mislabeledPrimary.errors.includes('position_change_requires_primary_or_reuters_macro_source'));
+
 const holdOnMissingMacro = validateReasoningProposal({
   asset: 'BTC',
   action: 'HOLD',
