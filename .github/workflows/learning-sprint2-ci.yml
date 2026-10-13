@@ -82,6 +82,9 @@ jobs:
       - name: Bootstrap and migrate learning schema
         run: npm run learning:migrate
 
+      - name: Re-run migrations idempotently
+        run: npm run learning:migrate
+
       - name: Shadow configuration preflight
         run: npm run learning:config:check
 
