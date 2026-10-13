@@ -43,6 +43,8 @@ create table if not exists learning_decision_queue (
   processed_at timestamptz,
   decision_id bigint references learning_decisions(id),
   error_message text,
+  attempt_count integer not null default 0,
+  last_attempt_at timestamptz,
   created_at timestamptz not null default now()
 );
 
