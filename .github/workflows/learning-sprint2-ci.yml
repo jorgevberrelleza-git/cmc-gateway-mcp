@@ -39,6 +39,9 @@ jobs:
       - name: Sprint 3 learning self-test
         run: npm run learning:sprint3:selftest
 
+      - name: Sprint 4 learning self-test
+        run: npm run learning:sprint4:selftest
+
   postgres-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
