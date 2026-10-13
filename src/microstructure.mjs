@@ -35,7 +35,9 @@ function flattenQuoteAsset(asset) {
   }
   return {
     ...asset,
-    ...(usd && typeof usd === 'object' ? usd : {})
+    ...(usd && typeof usd === 'object' ? usd : {}),
+    symbol: asset.symbol ?? usd?.symbol ?? null,
+    quote_symbol: usd?.symbol ?? null
   };
 }
 
