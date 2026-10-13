@@ -1,4 +1,5 @@
 import { extractUsdPrices } from '../src/learning/features.mjs';
+import { fillMissingUsdPrices } from '../src/learning/valuation-fallback.mjs';
 import { replayLedger, markLedgerState } from '../src/learning/portfolio-ledger.mjs';
 import { valueHodlBenchmark, buildPortfolioBenchmark } from '../src/learning/benchmark.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
@@ -26,7 +27,9 @@ try {
 
   const latest = await store.latestSnapshot();
   if (!latest) throw new Error('no snapshot available for portfolio mark');
-  const prices = extractUsdPrices(latest.payload || {});
+  const extractedPrices = extractUsdPrices(latest.payload || {});
+  const resolved = await fillMissingUsdPrices(extractedPrices, Object.keys(replayLedger(events).positions || {}));
+  const prices = resolved.prices;
   const state = replayLedger(events);
   const marked = markLedgerState(state, prices);
 
