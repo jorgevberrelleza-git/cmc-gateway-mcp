@@ -62,7 +62,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     const result = await pool.query(
       `select id, generated_at, snapshot_version, source, sha256, payload, material_event
        from learning_snapshots
-       where generated_at between ($1::timestamptz - ($2 * interval '1 millisecond'))
+       where generated_at between ($1::timestamptz - ($2::bigint * interval '1 millisecond'))
                               and ($1::timestamptz + ($2 * interval '1 millisecond'))
        order by abs(extract(epoch from (generated_at - $1::timestamptz))) asc
        limit 1`,
