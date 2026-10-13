@@ -61,6 +61,9 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
   const maxItems = n(env.LEARNING_REASONING_MAX_ITEMS, 3);
   if (!Number.isFinite(maxItems) || maxItems < 1 || maxItems > 3) errors.push('LEARNING_REASONING_MAX_ITEMS_out_of_range');
 
+  const maxAttempts = n(env.LEARNING_REASONING_MAX_ATTEMPTS, 3);
+  if (!Number.isFinite(maxAttempts) || maxAttempts < 1 || maxAttempts > 5) errors.push('LEARNING_REASONING_MAX_ATTEMPTS_out_of_range');
+
   const maxOutput = n(env.LEARNING_REASONING_MAX_OUTPUT_TOKENS, 1800);
   if (!Number.isFinite(maxOutput) || maxOutput < 500 || maxOutput > 4000) errors.push('LEARNING_REASONING_MAX_OUTPUT_TOKENS_out_of_range');
 
@@ -105,6 +108,7 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
     reasoning_model: env.LEARNING_REASONING_MODEL || null,
     web_search_enabled: webSearch === true,
     max_reasoning_items: maxItems,
+    max_reasoning_attempts: maxAttempts,
     max_output_tokens: maxOutput,
     max_event_age_hours: eventAge,
     stale_minutes: staleMinutes,
