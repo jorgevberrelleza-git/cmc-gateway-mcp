@@ -36,9 +36,10 @@ try {
   });
   assert.equal(queued.status, 'pending');
 
-  const claimed = await store.claimNextDecisionQueue();
+  const claimed = await store.claimNextDecisionQueue(3);
   assert.equal(Number(claimed.id), Number(queued.id));
   assert.equal(claimed.status, 'processing');
+  assert.equal(Number(claimed.attempt_count), 1);
 
   const reasoningRun = await store.startReasoningRun({
     queueId: claimed.id,
@@ -208,8 +209,9 @@ try {
     materialEvent: { material: true, reasons: ['BTC:spot_delta_25'] }
   });
   assert.equal(queued2.status, 'pending');
-  const claimed2 = await store.claimNextDecisionQueue();
+  const claimed2 = await store.claimNextDecisionQueue(3);
   assert.equal(Number(claimed2.id), Number(queued2.id));
+  assert.equal(Number(claimed2.attempt_count), 1);
   const released = await store.releaseQueueItem(claimed2.id, { errorMessage: 'transient_test' });
   assert.equal(released.status, 'pending');
 
