@@ -52,6 +52,12 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
       if (!env.OPENAI_API_KEY) errors.push('OPENAI_API_KEY_required_for_openai_reasoning');
       if (!env.LEARNING_REASONING_MODEL) errors.push('LEARNING_REASONING_MODEL_required_for_openai_reasoning');
       if (webSearch !== true) warnings.push('web_search_disabled_position_changes_will_fail_macro_attestation');
+      if (!Number.isFinite(monthlyAiBudget) || monthlyAiBudget <= 0) errors.push('LEARNING_MONTHLY_AI_BUDGET_USD_required_for_openai_reasoning');
+      if (!Number.isFinite(n(env.LEARNING_COST_INPUT_USD_PER_MILLION, NaN))) errors.push('LEARNING_COST_INPUT_USD_PER_MILLION_required_for_budget_guard');
+      if (!Number.isFinite(n(env.LEARNING_COST_OUTPUT_USD_PER_MILLION, NaN))) errors.push('LEARNING_COST_OUTPUT_USD_PER_MILLION_required_for_budget_guard');
+      if (webSearch === true && !Number.isFinite(n(env.LEARNING_COST_WEB_SEARCH_USD_PER_CALL, NaN))) {
+        errors.push('LEARNING_COST_WEB_SEARCH_USD_PER_CALL_required_when_web_search_enabled');
+      }
     }
   }
   if (provider === 'openai_responses' && env.OPENAI_BASE_URL && !httpsUrl(env.OPENAI_BASE_URL)) {
@@ -63,6 +69,20 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
 
   const maxAttempts = n(env.LEARNING_REASONING_MAX_ATTEMPTS, 3);
   if (!Number.isFinite(maxAttempts) || maxAttempts < 1 || maxAttempts > 5) errors.push('LEARNING_REASONING_MAX_ATTEMPTS_out_of_range');
+
+  const monthlyAiBudget = n(env.LEARNING_MONTHLY_AI_BUDGET_USD, NaN);
+  const monthlyTotalBudget = n(env.LEARNING_MONTHLY_TOTAL_BUDGET_USD, NaN);
+  const monthlyInfraBudget = n(env.LEARNING_MONTHLY_INFRA_BUDGET_USD, NaN);
+  const monthlyRunLimit = n(env.LEARNING_MONTHLY_REASONING_RUN_LIMIT, 100);
+  const budgetAlertPct = n(env.LEARNING_BUDGET_ALERT_PCT, 80);
+  const budgetWebReserveCalls = n(env.LEARNING_BUDGET_WEB_SEARCH_RESERVE_CALLS, 3);
+
+  if (Number.isFinite(monthlyTotalBudget) && monthlyTotalBudget <= 0) errors.push('LEARNING_MONTHLY_TOTAL_BUDGET_USD_must_be_positive');
+  if (Number.isFinite(monthlyInfraBudget) && monthlyInfraBudget < 0) errors.push('LEARNING_MONTHLY_INFRA_BUDGET_USD_must_be_nonnegative');
+  if (Number.isFinite(monthlyAiBudget) && monthlyAiBudget <= 0) errors.push('LEARNING_MONTHLY_AI_BUDGET_USD_must_be_positive');
+  if (!Number.isFinite(monthlyRunLimit) || monthlyRunLimit < 1 || monthlyRunLimit > 10000) errors.push('LEARNING_MONTHLY_REASONING_RUN_LIMIT_out_of_range');
+  if (!Number.isFinite(budgetAlertPct) || budgetAlertPct < 1 || budgetAlertPct > 99) errors.push('LEARNING_BUDGET_ALERT_PCT_out_of_range');
+  if (!Number.isFinite(budgetWebReserveCalls) || budgetWebReserveCalls < 0 || budgetWebReserveCalls > 20) errors.push('LEARNING_BUDGET_WEB_SEARCH_RESERVE_CALLS_out_of_range');
 
   const maxOutput = n(env.LEARNING_REASONING_MAX_OUTPUT_TOKENS, 1800);
   if (!Number.isFinite(maxOutput) || maxOutput < 500 || maxOutput > 4000) errors.push('LEARNING_REASONING_MAX_OUTPUT_TOKENS_out_of_range');
@@ -87,6 +107,12 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
   if (!Number.isFinite(feeRate) || feeRate < 0 || feeRate > 0.01) errors.push('LEARNING_PAPER_FEE_RATE_out_of_range');
   if (!Number.isFinite(slippage) || slippage < 0 || slippage > 100) errors.push('LEARNING_PAPER_SLIPPAGE_BPS_out_of_range');
 
+  if (Number.isFinite(monthlyTotalBudget) && Number.isFinite(monthlyInfraBudget) && Number.isFinite(monthlyAiBudget)) {
+    if (monthlyInfraBudget + monthlyAiBudget > monthlyTotalBudget + 1e-9) {
+      errors.push('planned_infra_plus_ai_budget_exceeds_total_monthly_budget');
+    }
+  }
+
   const forbiddenSecrets = [
     'BITSO_API_KEY','BITSO_API_SECRET','BITSO_KEY','BITSO_SECRET','BITSO_PRIVATE_KEY',
     'BITSO_PRIVATE_SECRET','BITSO_TRADING_KEY','BITSO_TRADING_SECRET'
@@ -109,6 +135,12 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
     web_search_enabled: webSearch === true,
     max_reasoning_items: maxItems,
     max_reasoning_attempts: maxAttempts,
+    monthly_ai_budget_usd: Number.isFinite(monthlyAiBudget) ? monthlyAiBudget : null,
+    monthly_total_budget_usd: Number.isFinite(monthlyTotalBudget) ? monthlyTotalBudget : null,
+    monthly_infra_budget_usd: Number.isFinite(monthlyInfraBudget) ? monthlyInfraBudget : null,
+    monthly_reasoning_run_limit: monthlyRunLimit,
+    budget_alert_pct: budgetAlertPct,
+    budget_web_search_reserve_calls: budgetWebReserveCalls,
     max_output_tokens: maxOutput,
     max_event_age_hours: eventAge,
     stale_minutes: staleMinutes,
