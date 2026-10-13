@@ -33,6 +33,15 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows[0] ?? null;
   }
 
+  async function getSnapshotById(id) {
+    const result = await pool.query(
+      `select id, generated_at, snapshot_version, source, sha256, payload, material_event
+       from learning_snapshots where id = $1 limit 1`,
+      [id]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async function recentSnapshots(limit = 3) {
     const safeLimit = Math.max(1, Math.min(500, Number(limit) || 3));
     const result = await pool.query(
@@ -63,7 +72,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
       `select id, generated_at, snapshot_version, source, sha256, payload, material_event
        from learning_snapshots
        where generated_at between ($1::timestamptz - ($2::bigint * interval '1 millisecond'))
-                              and ($1::timestamptz + ($2 * interval '1 millisecond'))
+                              and ($1::timestamptz + ($2::bigint * interval '1 millisecond'))
        order by abs(extract(epoch from (generated_at - $1::timestamptz))) asc
        limit 1`,
       [targetTime, half]
@@ -198,6 +207,51 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
           [safeLimit]
         );
     return result.rows;
+  }
+
+  async function claimNextDecisionQueue() {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const picked = await client.query(
+        `select *
+         from learning_decision_queue
+         where status = 'pending'
+         order by priority desc, created_at asc
+         for update skip locked
+         limit 1`
+      );
+      const row = picked.rows[0];
+      if (!row) {
+        await client.query('commit');
+        return null;
+      }
+      const updated = await client.query(
+        `update learning_decision_queue
+         set status = 'processing', claimed_at = now(), error_message = null
+         where id = $1
+         returning *`,
+        [row.id]
+      );
+      await client.query('commit');
+      return updated.rows[0] ?? null;
+    } catch (error) {
+      await client.query('rollback').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async function releaseQueueItem(id, { errorMessage = null } = {}) {
+    const result = await pool.query(
+      `update learning_decision_queue
+       set status = 'pending', claimed_at = null, error_message = $2
+       where id = $1 and status = 'processing'
+       returning *`,
+      [id, errorMessage]
+    );
+    return result.rows[0] ?? null;
   }
 
   async function finishQueueItem(id, { status = 'processed', decisionId = null, errorMessage = null } = {}) {
@@ -373,13 +427,68 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
     const clauses = [];
     const args = [];
-    if (from) { args.push(from); clauses.push(`detected_at >= $${args.length}`); }
-    if (to) { args.push(to); clauses.push(`detected_at <= $${args.length}`); }
+    if (from) { args.push(from); clauses.push(`detected_at >= ${args.length}`); }
+    if (to) { args.push(to); clauses.push(`detected_at <= ${args.length}`); }
     args.push(safeLimit);
     const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
     const result = await pool.query(
-      `select * from learning_watchdog_events ${where} order by detected_at asc limit $${args.length}`,
+      `select * from learning_watchdog_events ${where} order by detected_at asc limit ${args.length}`,
       args
+    );
+    return result.rows;
+  }
+
+  async function startReasoningRun({ queueId, provider, model = null, requestPacket }) {
+    const result = await pool.query(
+      `insert into learning_reasoning_runs
+        (queue_id, provider, model, status, request_packet)
+       values ($1,$2,$3,'started',$4::jsonb)
+       returning *`,
+      [queueId, provider, model, j(requestPacket)]
+    );
+    return result.rows[0];
+  }
+
+  async function finishReasoningRun(id, {
+    status,
+    responsePayload = null,
+    validationSummary = null,
+    acceptedDecisionIds = [],
+    rejectedProposals = [],
+    usage = null,
+    errorMessage = null
+  } = {}) {
+    if (!['completed','rejected','error','skipped'].includes(status)) throw new Error('invalid_reasoning_run_status');
+    const result = await pool.query(
+      `update learning_reasoning_runs
+       set status = $2,
+           response_payload = $3::jsonb,
+           validation_summary = $4::jsonb,
+           accepted_decision_ids = $5::jsonb,
+           rejected_proposals = $6::jsonb,
+           usage = $7::jsonb,
+           error_message = $8,
+           completed_at = now()
+       where id = $1
+       returning *`,
+      [
+        id, status,
+        responsePayload == null ? null : j(responsePayload),
+        validationSummary == null ? null : j(validationSummary),
+        j(acceptedDecisionIds),
+        j(rejectedProposals),
+        usage == null ? null : j(usage),
+        errorMessage
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function listReasoningRuns({ limit = 100 } = {}) {
+    const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 100));
+    const result = await pool.query(
+      `select * from learning_reasoning_runs order by started_at desc limit $1`,
+      [safeLimit]
     );
     return result.rows;
   }
@@ -390,6 +499,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     pool,
     saveSnapshot,
     latestSnapshot,
+    getSnapshotById,
     recentSnapshots,
     snapshotsBetween,
     nearestSnapshot,
@@ -401,6 +511,8 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     setPaperOrderState,
     enqueueDecisionReview,
     listDecisionQueue,
+    claimNextDecisionQueue,
+    releaseQueueItem,
     finishQueueItem,
     appendLedgerEvent,
     ledgerEvents,
@@ -412,6 +524,9 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     listOutcomes,
     saveWatchdogEvent,
     listWatchdogEvents,
+    startReasoningRun,
+    finishReasoningRun,
+    listReasoningRuns,
     close
   };
 }
