@@ -10,12 +10,29 @@ const oneObservation = evaluateDefensivePersistence([
 ]);
 assert.equal(oneObservation.confirmed, false);
 
+const structureOnlyRepeated = evaluateDefensivePersistence([
+  { observed_at: '2026-10-13T00:00:00Z', evidence_families: ['structure'] },
+  { observed_at: '2026-10-13T06:00:00Z', evidence_families: ['structure'] }
+]);
+assert.equal(structureOnlyRepeated.confirmed, false, 'price/structure alone must never satisfy defensive persistence');
+
 const persistent = evaluateDefensivePersistence([
   { observed_at: '2026-10-13T00:00:00Z', evidence_families: ['structure', 'relative_strength', 'fundamentals'] },
   { observed_at: '2026-10-13T06:00:00Z', evidence_families: ['structure', 'relative_strength'] }
 ]);
 assert.equal(persistent.confirmed, true);
 assert.deepEqual(persistent.common_families.sort(), ['relative_strength', 'structure']);
+
+const stalePersistence = evaluateDefensivePersistence([
+  { observed_at: '2026-10-13T00:00:00Z', evidence_families: ['structure', 'relative_strength'] },
+  { observed_at: '2026-10-14T00:30:00Z', evidence_families: ['structure', 'relative_strength'] }
+]);
+assert.equal(stalePersistence.confirmed, false, 'widely separated stale observations must not confirm by default');
+
+const dailyClose = evaluateDefensivePersistence([
+  { observed_at: '2026-10-13T06:00:00Z', evidence_families: ['structure', 'relative_strength'] }
+], { daily_close_confirmed: true });
+assert.equal(dailyClose.confirmed, true);
 
 const defensiveRejected = validateShadowDecision({
   asset: 'AAVE',
@@ -29,6 +46,19 @@ const defensiveRejected = validateShadowDecision({
 assert.equal(defensiveRejected.ok, false);
 assert.ok(defensiveRejected.errors.includes('defensive_change_requires_persistence_confirmation'));
 
+const priceDropOnly = validateShadowDecision({
+  asset: 'AAVE',
+  action: 'MOVE_TO_USD',
+  evidence_families: ['structure'],
+  persistence: { confirmed: true },
+  thesis: { reason: 'price broke support' },
+  macro_context: { regime: 'neutral' },
+  execution_enabled: false
+});
+assert.equal(priceDropOnly.ok, false, 'price/structure alone must never force USD');
+assert.ok(priceDropOnly.errors.includes('defensive_change_requires_two_independent_evidence_families'));
+assert.ok(priceDropOnly.errors.includes('price_or_structure_break_alone_cannot_force_usd'));
+
 const defensiveAccepted = validateShadowDecision({
   asset: 'AAVE',
   action: 'REDUCE',
@@ -39,6 +69,43 @@ const defensiveAccepted = validateShadowDecision({
   execution_enabled: false
 });
 assert.equal(defensiveAccepted.ok, true);
+
+const fundamentalsOnlyBuy = validateShadowDecision({
+  asset: 'AAVE',
+  action: 'BUY',
+  evidence_families: ['fundamentals'],
+  reward_risk: 3,
+  persistence: { confirmed: true },
+  thesis: { reason: 'fundamentals improved' },
+  macro_context: { regime: 'favorable' },
+  execution_enabled: false
+});
+assert.equal(fundamentalsOnlyBuy.ok, false);
+assert.ok(fundamentalsOnlyBuy.errors.includes('buy_requires_three_independent_evidence_families'));
+assert.ok(fundamentalsOnlyBuy.errors.includes('defi_fundamentals_cannot_create_buy_signal'));
+
+const weakRewardRiskBuy = validateShadowDecision({
+  asset: 'BTC',
+  action: 'BUY',
+  evidence_families: ['structure', 'macro', 'flow'],
+  reward_risk: 1.5,
+  thesis: { reason: 'setup exists but reward/risk is insufficient' },
+  macro_context: { regime: 'favorable' },
+  execution_enabled: false
+});
+assert.equal(weakRewardRiskBuy.ok, false);
+assert.ok(weakRewardRiskBuy.errors.includes('buy_requires_reward_risk_at_least_2'));
+
+const executionAttempt = validateShadowDecision({
+  asset: 'BTC',
+  action: 'HOLD',
+  evidence_families: [],
+  thesis: { reason: 'test' },
+  macro_context: { regime: 'neutral' },
+  execution_enabled: true
+});
+assert.equal(executionAttempt.ok, false);
+assert.ok(executionAttempt.errors.includes('shadow_engine_cannot_enable_execution'));
 
 const rr = calculateRewardRisk({ entry_price: 100, invalidation_price: 90, target_price: 125 });
 assert.equal(rr, 2.5);
