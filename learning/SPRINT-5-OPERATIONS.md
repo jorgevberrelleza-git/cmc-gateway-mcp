@@ -51,18 +51,38 @@ The health report treats these as blockers:
 
 A health blocker does not enable trading. It should pause or investigate shadow reasoning.
 
-## Cost telemetry
+## Monthly budget guard
 
-Model/vendor prices are not hard-coded because they can change.
+The shadow runtime supports an application-level monthly ceiling for variable AI usage.
 
-Configure current rates externally:
+Configure:
+- `LEARNING_MONTHLY_TOTAL_BUDGET_USD` — overall planning ceiling;
+- `LEARNING_MONTHLY_INFRA_BUDGET_USD` — fixed hosting/database allocation;
+- `LEARNING_MONTHLY_AI_BUDGET_USD` — variable AI ceiling;
+- `LEARNING_MONTHLY_REASONING_RUN_LIMIT` — second hard guard independent of token pricing;
+- `LEARNING_BUDGET_ALERT_PCT` — warning threshold, default 80%;
+- `LEARNING_BUDGET_WEB_SEARCH_RESERVE_CALLS` — conservative pre-call reserve.
+
+Paid OpenAI reasoning cannot pass configuration preflight unless an explicit AI budget and current pricing assumptions are configured.
+
+Before each paid reasoning call, the system:
+1. totals current-month reasoning usage from PostgreSQL;
+2. estimates a conservative ceiling for the next request;
+3. blocks the provider call if the projected amount exceeds the monthly AI ceiling;
+4. also blocks when the monthly reasoning-run limit is reached.
+
+Run `npm run learning:budget` to view current monthly status.
+
+This controls estimated variable AI spend. It cannot directly prevent a hosting provider from charging the fixed plan selected for Render, so the infrastructure portion is controlled by choosing fixed-size plans with no automatic scale-up and by keeping planned infrastructure cost below `LEARNING_MONTHLY_INFRA_BUDGET_USD`.
+
+Model/vendor prices are deliberately not hard-coded because they can change. Configure current rates externally:
 - `LEARNING_COST_INPUT_USD_PER_MILLION`
 - `LEARNING_COST_OUTPUT_USD_PER_MILLION`
 - `LEARNING_COST_WEB_SEARCH_USD_PER_CALL`
 
 Then run `npm run learning:cost`.
 
-The result is an estimate, not a billing authority.
+The dollar guard is based on configured rate assumptions and conservative request reserves; provider billing remains the final authority.
 
 ## Provider canary
 
