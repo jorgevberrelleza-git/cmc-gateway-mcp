@@ -13,13 +13,8 @@ const client = new Client({
 
 await client.connect();
 try {
-  await client.query(`
-    create table if not exists learning_schema_migrations (
-      name text primary key,
-      sha256 text not null,
-      applied_at timestamptz not null default now()
-    )
-  `);
+  const baseline = await fs.readFile(new URL('../learning/schema.sql', import.meta.url), 'utf8');
+  await client.query(baseline);
 
   const dir = new URL('../learning/migrations/', import.meta.url);
   const names = (await fs.readdir(dir)).filter(x => x.endsWith('.sql')).sort();
