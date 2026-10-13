@@ -116,15 +116,23 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 1000));
     const clauses = [];
     const args = [];
-    if (from) { args.push(from); clauses.push(`created_at >= $${args.length}`); }
-    if (to) { args.push(to); clauses.push(`created_at <= $${args.length}`); }
+    if (from) { args.push(from); clauses.push(`created_at >= ${args.length}`); }
+    if (to) { args.push(to); clauses.push(`created_at <= ${args.length}`); }
     args.push(safeLimit);
     const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
     const result = await pool.query(
-      `select * from learning_decisions ${where} order by created_at asc limit $${args.length}`,
+      `select * from learning_decisions ${where} order by created_at asc limit ${args.length}`,
       args
     );
     return result.rows;
+  }
+
+  async function getDecisionByKey(decisionKey) {
+    const result = await pool.query(
+      `select * from learning_decisions where decision_key = $1 limit 1`,
+      [decisionKey]
+    );
+    return result.rows[0] ?? null;
   }
 
   async function savePaperOrder({
@@ -145,6 +153,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
         (decision_id, symbol, side, quantity, notional_usd, reference_price_usd,
          invalidation_price_usd, target_price_usd, estimated_fee_usd, estimated_slippage_bps, state)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (decision_id, symbol) do nothing
        returning *`,
       [
         decisionId, String(symbol || '').toUpperCase(), side, quantity, notionalUsd, referencePriceUsd,
@@ -505,6 +514,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     nearestSnapshot,
     saveDecision,
     listDecisions,
+    getDecisionByKey,
     savePaperOrder,
     paperOrdersForDecision,
     unledgeredPaperOrders,
