@@ -29,10 +29,43 @@ function normalizedUrl(value) {
   try {
     const url = new URL(String(value || ''));
     url.hash = '';
+    url.search = '';
     return url.toString().replace(/\/$/, '');
   } catch {
     return null;
   }
+}
+
+function hostname(value) {
+  try { return new URL(String(value || '')).hostname.toLowerCase(); }
+  catch { return ''; }
+}
+
+function trustedHighQualitySource(source = {}) {
+  const kind = String(source.kind || '').toLowerCase();
+  const host = hostname(source.url);
+  if (!host) return false;
+  if (kind === 'reuters') return host === 'reuters.com' || host.endsWith('.reuters.com');
+  if (kind !== 'primary') return false;
+
+  const exact = new Set([
+    'federalreserve.gov',
+    'bls.gov',
+    'treasury.gov',
+    'sec.gov',
+    'ecb.europa.eu',
+    'bankofengland.co.uk',
+    'boj.or.jp',
+    'bis.org',
+    'imf.org',
+    'oecd.org',
+    'worldbank.org'
+  ]);
+  return exact.has(host)
+    || [...exact].some(domain => host.endsWith(`.${domain}`))
+    || host.endsWith('.gov')
+    || host.endsWith('.gov.cn')
+    || host.endsWith('.europa.eu');
 }
 
 export function validateReasoningProposal(proposal = {}, packet = {}, {
@@ -59,12 +92,12 @@ export function validateReasoningProposal(proposal = {}, packet = {}, {
       return false;
     }
   });
-  const highQualitySources = validSourceUrls.filter(x => ['primary','reuters'].includes(String(x?.kind || '').toLowerCase()));
+  const highQualitySources = validSourceUrls.filter(trustedHighQualitySource);
   const attestedSet = new Set((Array.isArray(attestedMacroUrls) ? attestedMacroUrls : [])
     .map(normalizedUrl)
     .filter(Boolean));
   const matchedSources = validSourceUrls.filter(x => attestedSet.has(normalizedUrl(x.url)));
-  const matchedHighQualitySources = matchedSources.filter(x => ['primary','reuters'].includes(String(x?.kind || '').toLowerCase()));
+  const matchedHighQualitySources = matchedSources.filter(trustedHighQualitySource);
   const macro = validateMacroContext(macroRaw);
   const macroAge = freshnessHours(macroRaw.observed_at, packet?.market?.generated_at);
   const positionChanging = action !== 'HOLD';
