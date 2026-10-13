@@ -13,7 +13,7 @@ export { analyzeDecisionDrift } from './drift-watchdog.mjs';
 export { scoreDecisionQuality } from './decision-quality.mjs';
 export { buildLearningReport } from './report.mjs';
 export { evidenceFamiliesFromReasons, eventEvidenceByAsset, persistenceObservationsFromSnapshots } from './evidence.mjs';
-export { buildReasoningPacket } from './reasoning-packet.mjs';
+export { buildReasoningPacket, sanitizeReasoningPacketForProvider } from './reasoning-packet.mjs';
 export { REASONING_OUTPUT_SCHEMA, reasoningSystemInstructions } from './reasoning-schema.mjs';
 export { buildOpenAIRequest, createReasoningProvider } from './reasoning-provider.mjs';
 export { validateReasoningProposal, buildDeterministicPaperOrder, assessReasoningProposal } from './reasoning-bridge.mjs';
