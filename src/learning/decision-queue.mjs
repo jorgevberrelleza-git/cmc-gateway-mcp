@@ -2,7 +2,7 @@ function severityScore(materialEvent = {}) {
   let score = 50;
   for (const reason of materialEvent.reasons || []) {
     const text = String(reason);
-    if (text.includes('gate_')) score += 10;
+    if (text.includes('gate_')) score += 15;
     if (text.includes('trap_delta_')) score += 8;
     if (text.includes('fundamental_quality_delta_')) score += 8;
     const price = text.match(/price_move_(-?\d+(?:\.\d+)?)pct/);
