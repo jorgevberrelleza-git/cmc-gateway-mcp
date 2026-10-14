@@ -49,6 +49,9 @@ jobs:
       - name: Shadow v0.2 zero-cost gate self-test
         run: npm run learning:v02:selftest
 
+      - name: Shadow v0.2 A/B validation self-test
+        run: npm run learning:v02:ab:selftest
+
   postgres-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
