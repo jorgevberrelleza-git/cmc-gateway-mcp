@@ -547,6 +547,43 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     return result.rows;
   }
 
+  async function saveShadowV2Evaluation(evaluation) {
+    const result = await pool.query(
+      `insert into learning_shadow_v2_evaluations
+        (snapshot_id, generated_at, strategy_version, regime, consistency,
+         asset_assessments, external_research_trigger, execution_enabled)
+       values ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,false)
+       on conflict (snapshot_id, strategy_version) do nothing
+       returning *`,
+      [
+        evaluation.snapshot_id,
+        evaluation.generated_at,
+        evaluation.strategy_version || 'shadow_v0.2',
+        j(evaluation.regime),
+        j(evaluation.consistency),
+        j(evaluation.assets),
+        j(evaluation.external_research_trigger)
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function listShadowV2Evaluations({ from = null, to = null, limit = 5000 } = {}) {
+    const safeLimit = Math.max(1, Math.min(10000, Number(limit) || 5000));
+    const clauses = [];
+    const args = [];
+    if (from) { args.push(from); clauses.push(`generated_at >= ${args.length}`); }
+    if (to) { args.push(to); clauses.push(`generated_at <= ${args.length}`); }
+    args.push(safeLimit);
+    const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
+    const result = await pool.query(
+      `select * from learning_shadow_v2_evaluations ${where}
+       order by generated_at asc limit ${args.length}`,
+      args
+    );
+    return result.rows;
+  }
+
   async function saveRuntimeCycle({
     cycleKey,
     startedAt,
@@ -589,6 +626,7 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
       union all select 'learning_watchdog_events', count(*)::bigint from learning_watchdog_events
       union all select 'learning_reasoning_runs', count(*)::bigint from learning_reasoning_runs
       union all select 'learning_runtime_cycles', count(*)::bigint from learning_runtime_cycles
+      union all select 'learning_shadow_v2_evaluations', count(*)::bigint from learning_shadow_v2_evaluations
     `);
     const size = await pool.query(`
       select pg_database_size(current_database())::bigint as database_bytes,
@@ -642,6 +680,8 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     finishReasoningRun,
     listReasoningRuns,
     reasoningRunsBetween,
+    saveShadowV2Evaluation,
+    listShadowV2Evaluations,
     saveRuntimeCycle,
     recentRuntimeCycles,
     databaseStats,
