@@ -27,9 +27,14 @@ function rows(table) {
 
 function parseEventDate(value) {
   if (!value) return null;
-  const direct = Date.parse(value);
+  const text = String(value).trim();
+  if (/^\d{1,2}\s+[A-Za-z]+\s+\d{4}$/.test(text)) {
+    const noonUtc = Date.parse(`${text} 12:00:00 UTC`);
+    if (Number.isFinite(noonUtc)) return noonUtc;
+  }
+  const direct = Date.parse(text);
   if (Number.isFinite(direct)) return direct;
-  const utc = Date.parse(`${value} UTC`);
+  const utc = Date.parse(`${text} UTC`);
   return Number.isFinite(utc) ? utc : null;
 }
 
