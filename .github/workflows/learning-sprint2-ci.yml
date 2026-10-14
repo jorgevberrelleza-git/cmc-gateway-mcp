@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/learning-engine-v0.1
+      - feature/shadow-v0.2-regime-gates
   pull_request:
     branches:
       - main
@@ -44,6 +45,9 @@ jobs:
 
       - name: Sprint 5 learning self-test
         run: npm run learning:sprint5:selftest
+
+      - name: Shadow v0.2 zero-cost gate self-test
+        run: npm run learning:v02:selftest
 
   postgres-integration:
     runs-on: ubuntu-latest
