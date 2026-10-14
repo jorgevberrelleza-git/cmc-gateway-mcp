@@ -19,3 +19,7 @@ export { buildOpenAIRequest, createReasoningProvider } from './reasoning-provide
 export { validateReasoningProposal, buildDeterministicPaperOrder, assessReasoningProposal } from './reasoning-bridge.mjs';
 export { validateShadowRuntimeConfig } from './runtime-config.mjs';
 export { summarizeReasoningCost, buildRuntimeHealth, monthWindowUtc, estimateReasoningRequestCeilingUsd, evaluateMonthlyReasoningBudget } from './runtime-telemetry.mjs';
+
+export { evaluateDataConsistency } from './data-consistency.mjs';
+export { buildRegimeEvidence } from './regime-evidence.mjs';
+export { evaluateShadowV2 } from './shadow-v2.mjs';
