@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/learning-engine-v0.1
+      - feature/learning-engine-v0.2
   pull_request:
     branches:
       - main
@@ -44,6 +45,9 @@ jobs:
 
       - name: Sprint 5 learning self-test
         run: npm run learning:sprint5:selftest
+
+      - name: Shadow v0.2 deterministic self-test
+        run: npm run learning:v2:selftest
 
   postgres-integration:
     runs-on: ubuntu-latest
@@ -95,6 +99,11 @@ jobs:
 
       - name: End-to-end shadow dry run
         run: npm run learning:shadow:dryrun
+
+      - name: Shadow v0.2 replay smoke
+        run: npm run learning:v2:replay
+        env:
+          LEARNING_V2_REPLAY_HOURS: 72
 
       - name: PostgreSQL integration self-test
         run: npm run learning:db:selftest
