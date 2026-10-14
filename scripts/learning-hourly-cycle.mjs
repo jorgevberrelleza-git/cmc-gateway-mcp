@@ -16,6 +16,7 @@ if (!config.ready_for_shadow) {
 
 const steps = [
   ['collector', ['run', 'learning:collector']],
+  ['shadow-v2-bootstrap', ['run', 'learning:v2:bootstrap']],
   ['shadow-v2', ['run', 'learning:v2:latest']],
   ['portfolio-seed', ['run', 'learning:portfolio:seed']],
   ['reasoner', ['run', 'learning:reasoner']],
