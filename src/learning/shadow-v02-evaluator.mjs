@@ -4,7 +4,8 @@ import { assessEventQuality } from './event-quality-v02.mjs';
 export function evaluateShadowV02({ snapshot = {}, materialEvent = {}, verifiedResearch = null } = {}) {
   const eventQuality = assessEventQuality(materialEvent);
   const regime = buildRegimeEvidencePacket(snapshot, {
-    referenceTime: snapshot?.generated_at
+    referenceTime: snapshot?.generated_at,
+    verifiedResearch
   });
 
   const consistency = regime.data_consistency;
