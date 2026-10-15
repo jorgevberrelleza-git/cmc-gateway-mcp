@@ -1,0 +1,64 @@
+name: Shadow v0.2 Outcome Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Historical window in hours"
+        required: true
+        default: "96"
+        type: choice
+        options:
+          - "48"
+          - "96"
+          - "168"
+          - "336"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-outcomes:
+    name: v0.2-A read-only outcome validation
+    runs-on: ubuntu-latest
+    env:
+      LEARNING_V02_OUTCOME_HOURS: ${{ inputs.hours }}
+      DATABASE_URL: ${{ secrets.LEARNING_DATABASE_URL }}
+      PGSSL: ${{ secrets.LEARNING_PGSSL }}
+    steps:
+      - name: Checkout experimental branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/shadow-v0.2-regime-gates
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Safety self-tests
+        run: |
+          npm run learning:v02:selftest
+          npm run learning:v02:ab:selftest
+
+      - name: Verify required database secret
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Missing repository secret LEARNING_DATABASE_URL"
+            exit 1
+          fi
+
+      - name: Run v0.2-A historical outcome validation
+        run: npm run learning:v02:outcomes
+
+      - name: Safety invariant
+        shell: bash
+        run: |
+          echo "Shadow v0.2-A completed in read-only analysis mode."
+          echo "execution_enabled=false"
+          echo "No exchange write step exists in this workflow."
