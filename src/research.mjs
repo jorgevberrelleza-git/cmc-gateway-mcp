@@ -8,22 +8,61 @@ async function pass(tool, args = {}) {
 
 
 function parseCompactPayload(result) {
-  if (result?.structuredContent != null) return result.structuredContent;
+  const structured = result?.structuredContent ?? null;
+  let parsedText = null;
   for (const block of result?.content || []) {
     if (block?.type !== 'text') continue;
-    try { return JSON.parse(block.text); } catch {}
+    try { parsedText = JSON.parse(block.text); break; } catch {}
   }
-  return null;
+  if (structured != null && parsedText != null) {
+    return { structuredContent: structured, content_json: parsedText };
+  }
+  if (structured != null) return structured;
+  return parsedText;
 }
 
-function quoteRowsFromCompact(quotes) {
-  const p = parseCompactPayload(quotes);
+function flattenQuoteAsset(asset) {
+  if (!asset || typeof asset !== 'object') return null;
+  const quoteRaw = asset.quote;
+  let usd = null;
+  if (Array.isArray(quoteRaw)) {
+    usd = quoteRaw.find(q => String(q?.symbol || q?.convert_symbol || '').toUpperCase() === 'USD') || quoteRaw[0] || null;
+  } else if (quoteRaw && typeof quoteRaw === 'object') {
+    usd = quoteRaw.USD || quoteRaw.usd || Object.values(quoteRaw)[0] || null;
+  }
+  return {
+    ...asset,
+    ...(usd && typeof usd === 'object' ? usd : {}),
+    symbol: asset.symbol ?? usd?.symbol ?? null,
+    quote_symbol: usd?.symbol ?? null
+  };
+}
+
+function normalizeQuoteRowsPayload(p) {
   if (!p) return [];
-  if (Array.isArray(p)) return p;
+  if (Array.isArray(p)) return p.map(flattenQuoteAsset).filter(Boolean);
+
   if (Array.isArray(p.rows) && Array.isArray(p.headers)) {
-    return p.rows.map(row => Object.fromEntries(p.headers.map((h, i) => [h, row[i]])));
+    return p.rows.map(row => Object.fromEntries(p.headers.map((h, i) => [h, row?.[i]])));
+  }
+
+  if (p.data != null) {
+    const records = Array.isArray(p.data)
+      ? p.data
+      : (typeof p.data === 'object' ? Object.values(p.data) : []);
+    const out = records.map(flattenQuoteAsset).filter(Boolean);
+    if (out.length) return out;
+  }
+
+  if (p.result != null) return normalizeQuoteRowsPayload(p.result);
+  if (p.symbol || p.quote) {
+    const single = flattenQuoteAsset(p);
+    return single ? [single] : [];
   }
   return [];
+}
+function quoteRowsFromCompact(quotes) {
+  return normalizeQuoteRowsPayload(parseCompactPayload(quotes));
 }
 
 function n(v) {
