@@ -77,6 +77,23 @@ try {
 }
 
 const ok = coreOk && telemetryError == null;
+
+let v02OneShot = null;
+if (String(process.env.LEARNING_V02_RUN_ONCE || '').toLowerCase() === 'true') {
+  const run = spawnSync('npm', ['run', 'learning:v02:outcomes'], {
+    encoding: 'utf8',
+    env: { ...process.env, LEARNING_V02_OUTCOME_HOURS: process.env.LEARNING_V02_OUTCOME_HOURS || '96' }
+  });
+  v02OneShot = {
+    attempted: true,
+    status: run.status,
+    ok: run.status === 0,
+    stdout_tail: String(run.stdout || '').trim().slice(-12000),
+    stderr_tail: String(run.stderr || '').trim().slice(-4000),
+    execution_enabled: false
+  };
+}
+
 console.log(JSON.stringify({
   ok,
   cycle_status: cycleStatus,
@@ -87,6 +104,7 @@ console.log(JSON.stringify({
   telemetry_saved: telemetrySaved,
   telemetry_error: telemetryError,
   steps: results,
+  v02_one_shot: v02OneShot,
   execution_enabled: false
 }, null, 2));
 if (!ok) process.exitCode = 1;
