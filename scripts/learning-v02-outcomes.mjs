@@ -1,6 +1,6 @@
 import { createLearningStore } from '../src/learning/storage.mjs';
 import { detectMaterialEvent } from '../src/learning/event-detector.mjs';
-import { evaluateShadowV02 } from '../src/learning/shadow-v02-evaluator.mjs';
+import { assessEventQuality } from '../src/learning/event-quality-v02.mjs';
 import { V02_OUTCOME_HORIZONS_MS, evaluateEventOutcomeV02, summarizeOutcomeCohorts } from '../src/learning/outcome-validation-v02.mjs';
 
 const hours = Math.max(24, Math.min(24 * 14, Number(process.env.LEARNING_V02_OUTCOME_HOURS || 96)));
@@ -17,7 +17,7 @@ try {
     const previous = snapshots[i - 1], current = snapshots[i];
     const event = detectMaterialEvent(previous.payload, current.payload);
     if (!event.material) continue;
-    const evaluation = evaluateShadowV02({ snapshot: current.payload, materialEvent: event });
+    const eventQuality = assessEventQuality(event);
 
     for (const [horizon, ms] of Object.entries(V02_OUTCOME_HORIZONS_MS)) {
       const target = new Date(Date.parse(current.generated_at) + ms);
@@ -33,8 +33,8 @@ try {
         snapshot_id: current.id,
         generated_at: current.generated_at,
         later_snapshot_id: later.id,
-        research_candidate: evaluation.event_quality.research_candidate,
-        quality_score: evaluation.event_quality.quality_score_0_100,
+        research_candidate: eventQuality.research_candidate,
+        quality_score: eventQuality.quality_score_0_100,
         max_abs_return_pct: outcome.max_abs_return_pct,
         assets: outcome.assets
       });
