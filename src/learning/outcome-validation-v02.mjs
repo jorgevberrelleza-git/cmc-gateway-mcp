@@ -1,4 +1,18 @@
-import { unpackMcp, finiteNumber } from './data-consistency.mjs';
+function finite(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function unpackMcp(block) {
+  if (block == null) return null;
+  if (block?.structuredContent != null) return block.structuredContent;
+  if (block?.content_json != null) return block.content_json;
+  for (const item of block?.content || []) {
+    if (item?.type !== 'text' || typeof item.text !== 'string') continue;
+    try { return JSON.parse(item.text); } catch {}
+  }
+  return block && typeof block === 'object' && !Array.isArray(block) ? block : null;
+}
 
 export const V02_OUTCOME_HORIZONS_MS = Object.freeze({
   '1h': 1 * 60 * 60 * 1000,
@@ -14,7 +28,7 @@ export function quotePriceMap(snapshot = {}) {
     for (const row of payload.rows) {
       const q = Object.fromEntries(payload.headers.map((h, i) => [h, row?.[i]]));
       const symbol = String(q.symbol || '').toUpperCase();
-      const price = finiteNumber(q.price ?? q.price_usd ?? q.quote_price);
+      const price = finite(q.price ?? q.price_usd ?? q.quote_price);
       if (symbol && price != null && price > 0) out[symbol] = price;
     }
   }
@@ -22,7 +36,7 @@ export function quotePriceMap(snapshot = {}) {
     for (const asset of Object.values(payload.data)) {
       const symbol = String(asset?.symbol || '').toUpperCase();
       const usd = asset?.quote?.USD || asset?.quote?.usd || null;
-      const price = finiteNumber(usd?.price ?? asset?.price);
+      const price = finite(usd?.price ?? asset?.price);
       if (symbol && price != null && price > 0) out[symbol] = price;
     }
   }
