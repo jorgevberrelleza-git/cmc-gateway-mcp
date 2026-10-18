@@ -1,3 +1,5 @@
+import { extractUsdPrices } from './features.mjs';
+
 function finite(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -22,27 +24,8 @@ export const V02_OUTCOME_HORIZONS_MS = Object.freeze({
 });
 
 export function quotePriceMap(snapshot = {}) {
-  const payload = unpackMcp(snapshot?.quotes);
-  const out = {};
-  if (Array.isArray(payload?.headers) && Array.isArray(payload?.rows)) {
-    for (const row of payload.rows) {
-      const q = Object.fromEntries(payload.headers.map((h, i) => [h, row?.[i]]));
-      const symbol = String(q.symbol || '').toUpperCase();
-      const price = finite(q.price ?? q.price_usd ?? q.quote_price);
-      if (symbol && price != null && price > 0) out[symbol] = price;
-    }
-  }
-  if (payload?.data && typeof payload.data === 'object') {
-    for (const asset of Object.values(payload.data)) {
-      const symbol = String(asset?.symbol || '').toUpperCase();
-      const usd = asset?.quote?.USD || asset?.quote?.usd || null;
-      const price = finite(usd?.price ?? asset?.price);
-      if (symbol && price != null && price > 0) out[symbol] = price;
-    }
-  }
-  return out;
+  return extractUsdPrices(snapshot);
 }
-
 export function eventAssets(materialEvent = {}) {
   return [...new Set((materialEvent?.reasons || [])
     .map(r => String(r).split(':')[0]?.toUpperCase())
