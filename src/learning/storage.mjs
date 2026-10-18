@@ -572,13 +572,13 @@ export function createLearningStore({ connectionString = process.env.DATABASE_UR
     const safeLimit = Math.max(1, Math.min(10000, Number(limit) || 5000));
     const clauses = [];
     const args = [];
-    if (from) { args.push(from); clauses.push(`generated_at >= ${args.length}`); }
-    if (to) { args.push(to); clauses.push(`generated_at <= ${args.length}`); }
+    if (from) { args.push(from); clauses.push(`generated_at >= $${args.length}`); }
+    if (to) { args.push(to); clauses.push(`generated_at <= $${args.length}`); }
     args.push(safeLimit);
     const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
     const result = await pool.query(
       `select * from learning_shadow_v2_evaluations ${where}
-       order by generated_at asc limit ${args.length}`,
+       order by generated_at asc limit $${args.length}`,
       args
     );
     return result.rows;
