@@ -42,6 +42,15 @@ try {
   }
 
   const summary = Object.fromEntries(Object.entries(report).map(([h, rows]) => [h, summarizeOutcomeCohorts(rows)]));
+  const coverage = Object.fromEntries(Object.entries(report).map(([h, rows]) => {
+    const withPrice = rows.filter(r => Number.isFinite(r.max_abs_return_pct)).length;
+    return [h, {
+      total_events: rows.length,
+      events_with_price: withPrice,
+      price_coverage_pct: rows.length ? Number((100 * withPrice / rows.length).toFixed(2)) : null
+    }];
+  }));
+
   console.log(JSON.stringify({
     ok: true,
     contract_version: 'shadow_v0.2_outcome_validation_report',
@@ -52,6 +61,18 @@ try {
     paid_ai_calls_made: 0,
     execution_enabled: false
   }, null, 2));
+
+  const compact = {
+    ok: true,
+    contract_version: 'shadow_v0.2_outcome_compact_v1',
+    period_hours: hours,
+    coverage,
+    horizons: summary,
+    external_calls_made: 0,
+    paid_ai_calls_made: 0,
+    execution_enabled: false
+  };
+  console.log('V02_COMPACT_SUMMARY=' + JSON.stringify(compact));
 } finally {
   await store.close();
 }
