@@ -1,3 +1,4 @@
+import { summarizeDirectionalCohorts } from '../src/learning/outcome-direction-v02.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
 import { detectMaterialEvent } from '../src/learning/event-detector.mjs';
 import { assessEventQuality } from '../src/learning/event-quality-v02.mjs';
@@ -51,7 +52,9 @@ try {
     }];
   }));
 
-  console.log(JSON.stringify({
+  const directional = Object.fromEntries(Object.entries(report).map(([h, rows]) => [h, summarizeDirectionalCohorts(rows)]));
+
+  if (String(process.env.LEARNING_V02_COMPACT_ONLY || 'false').toLowerCase() !== 'true') console.log(JSON.stringify({
     ok: true,
     contract_version: 'shadow_v0.2_outcome_validation_report',
     period: { from: from.toISOString(), to: now.toISOString(), hours },
@@ -68,6 +71,7 @@ try {
     period_hours: hours,
     coverage,
     horizons: summary,
+    directional,
     external_calls_made: 0,
     paid_ai_calls_made: 0,
     execution_enabled: false
