@@ -94,6 +94,35 @@ if (String(process.env.LEARNING_V02_RUN_ONCE || '').toLowerCase() === 'true') {
   };
 }
 
+/*
+ * Lightweight daily research evidence. Runs inside the existing hourly cron
+ * only at 00:15 UTC when explicitly enabled; never affects the core cycle,
+ * calls external research, or places orders.
+ */
+let v02DailyReport = null;
+if (String(process.env.LEARNING_V02_DAILY_REPORT || 'false').toLowerCase() === 'true'
+    && cycleStarted.getUTCHours() === 0
+    && v02OneShot == null) {
+  const run = spawnSync('npm', ['run', 'learning:v02:outcomes'], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      LEARNING_V02_OUTCOME_HOURS: process.env.LEARNING_V02_OUTCOME_HOURS || '96',
+      LEARNING_V02_COMPACT_ONLY: 'true'
+    }
+  });
+  const compactLine = String(run.stdout || '').split(/\r?\n/)
+    .find(line => line.startsWith('V02_COMPACT_SUMMARY=')) || null;
+  v02DailyReport = {
+    attempted: true,
+    ok: run.status === 0 && compactLine != null,
+    status: run.status,
+    compact_summary: compactLine ? compactLine.slice(0, 10500) : null,
+    stderr_tail: String(run.stderr || '').trim().slice(-1500),
+    execution_enabled: false
+  };
+}
+
 console.log(JSON.stringify({
   ok,
   cycle_status: cycleStatus,
@@ -105,6 +134,7 @@ console.log(JSON.stringify({
   telemetry_error: telemetryError,
   steps: results,
   v02_one_shot: v02OneShot,
+  v02_daily_report: v02DailyReport,
   execution_enabled: false
 }, null, 2));
 if (!ok) process.exitCode = 1;
