@@ -197,6 +197,16 @@ try {
   const cycles = await store.recentRuntimeCycles(10);
   assert.ok(cycles.some(x => x.cycle_key === cycleKey));
 
+  // Regression guard for Postgres $1 placeholders in shadow-v2-bootstrap.
+  const noFilterEvaluations = await store.listShadowV2Evaluations({ limit: 1 });
+  assert.ok(Array.isArray(noFilterEvaluations));
+  const filteredEvaluations = await store.listShadowV2Evaluations({
+    from: new Date(Date.parse(snapshot.generated_at) - 60_000).toISOString(),
+    to: new Date(Date.parse(snapshot.generated_at) + 60_000).toISOString(),
+    limit: 2
+  });
+  assert.ok(Array.isArray(filteredEvaluations));
+
   const stats = await store.databaseStats();
   assert.ok(stats.tables.learning_snapshots >= 1);
   assert.ok(stats.tables.learning_runtime_cycles >= 1);
