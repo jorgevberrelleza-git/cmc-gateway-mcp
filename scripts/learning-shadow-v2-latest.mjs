@@ -48,6 +48,36 @@ try {
     external_research_trigger: evaluation.external_research_trigger,
     quote_parser_diagnostics: quoteExtractionDiagnostics(latest.payload),
     quote_provenance: latest.payload?.quote_provenance || null,
+    venue_comparison_diagnostics: Object.fromEntries(
+      (latest.payload?.assets || []).map(asset => {
+        const v=latest.payload?.microstructure?.assets?.[asset]?.venue_price_check;
+        return [asset, {
+          checked: v?.available === true,
+          reason: v?.available === false ? (v.reason || 'unknown') : v == null ? 'not_reported' : null,
+          quote_source: v?.quote_source || null,
+          basis_bps: Number.isFinite(Number(v?.basis_bps)) && v?.available === true ? Number(v.basis_bps) : null,
+          material_mismatch: v?.available === true ? v?.material_mismatch === true : null
+        }];
+      })
+    ),
+    aave_fundamental_diagnostics: (() => {
+      const a=latest.payload?.defi_fundamentals?.assets?.AAVE;
+      if(!a)return {available:false,reason:'no_protocol_evidence'};
+      return {
+        available:a.available===true,
+        protocol_slug:a.protocol_slug||null,
+        flow_scope:a.flow_scope||null,
+        score:a.evaluation?.fundamental_quality_0_100??null,
+        confirmation:a.evaluation?.confirmation||null,
+        confidence:a.evaluation?.confidence_0_100??null,
+        components:(a.evaluation?.components||[]).map(x=>({
+          metric:x.metric,value:x.value,counted:x.counted,contribution:x.contribution
+        })),
+        successful_metric_families:a.coverage?.successful_metric_families??null,
+        requested_metric_families:a.coverage?.requested_metric_families??null,
+        veto_policy_unchanged:true
+      };
+    })(),
     execution_enabled: false
   }));
 } finally {
