@@ -72,6 +72,7 @@ export function evaluateDataConsistency(snapshot = {}, {
 
     const venue = snapshot?.microstructure?.assets?.[asset]?.venue_price_check;
     if (venue?.material_mismatch === true) reasons.push('material_venue_price_mismatch');
+    if (micro?.available === true && venue?.available === false) reasons.push('venue_price_comparison_unavailable');
 
     const micro = snapshot?.microstructure?.assets?.[asset];
     if (micro?.available === true && Number(micro?.data_quality?.confidence_0_100) < 40) {
