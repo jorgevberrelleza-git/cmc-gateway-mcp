@@ -4,7 +4,8 @@ import crypto from 'node:crypto';
 // Keep this allowlist static. OFAC retired its RSS in 2025: do not add a defunct URL.
 export const GEO_SOURCES = Object.freeze([
   { id: 'fed_monetary', name: 'Federal Reserve - monetary policy', url: 'https://www.federalreserve.gov/feeds/press_monetary.xml', hostname: 'www.federalreserve.gov' },
-  { id: 'ecb_press', name: 'European Central Bank - press', url: 'https://www.ecb.europa.eu/rss/press.html', hostname: 'www.ecb.europa.eu' }
+  { id: 'ecb_press', name: 'European Central Bank - press', url: 'https://www.ecb.europa.eu/rss/press.html', hostname: 'www.ecb.europa.eu' },
+  { id: 'eu_council_press', name: 'Council of the European Union - press', url: 'https://www.consilium.europa.eu/en/rss/pressreleases.ashx', hostname: 'www.consilium.europa.eu' }
 ]);
 
 function textValue(v = '') {
@@ -35,6 +36,7 @@ function classify(title, sourceId) {
   const patterns = [
     { topic:'monetary_policy', severity:'high', rx:/\b(interest rate|federal funds|monetary policy decision|policy rate|fomc statement|rate cut|rate hike|quantitative tightening|quantitative easing)\b/i },
     { topic:'market_structure', severity:'high', rx:/\b(exchange outage|market disruption|trading suspension|financial stability|liquidity crisis|bank failure)\b/i },
+    { topic:'conflict_security', severity:'high', rx:/\b(armed conflict|military strike|invasion|ceasefire collapse|military escalation|military attack)\b/i },
     { topic:'sanctions_trade', severity:'medium', rx:/\b(sanctions|tariff|trade restriction|export control|embargo)\b/i },
     { topic:'crypto_regulation', severity:'medium', rx:/\b(crypto|bitcoin|stablecoin|digital asset|spot etf|tokeniz)\b/i },
     { topic:'macroeconomic', severity:'medium', rx:/\b(inflation|employment|gdp|economic outlook|consumer prices|credit conditions)\b/i }
