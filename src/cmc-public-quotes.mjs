@@ -17,6 +17,47 @@ export function classifyCmcQuoteFailure(message='') {
  return 'unclassified_upstream_error';
 }
 
+export function summarizeCmcMcpFailure(result) {
+  // Diagnostic is intentionally allowlisted: NEVER persist arbitrary
+  // upstream error messages, request headers or API-key fragments.
+  const structured=result?.structuredContent;
+  const texts=Array.isArray(result?.content)
+    ? result.content.filter(x=>x?.type==='text' && typeof x?.text==='string').map(x=>x.text.slice(0,2500))
+    : [];
+  let machineCode=null;
+  for(const candidate of [
+    structured?.status?.error_code,
+    structured?.error?.code,
+    structured?.error_code,
+    structured?.code
+  ]){
+    const n=Number(candidate);
+    if(candidate!=null && Number.isInteger(n) && n>=0 && n<=100000) {
+      machineCode=n;break;
+    }
+  }
+  if(machineCode==null){
+    for(const part of texts){
+      const found=/(?:error_code|status_code)["']?\\s*[:=]\\s*["']?(\\d{3,5})/i.exec(part);
+      if(found){machineCode=Number(found[1]);break;}
+    }
+  }
+  const category=classifyCmcQuoteFailure([
+    ...texts,
+    structured?.error?.message,
+    structured?.status?.error_message,
+    machineCode==null?'':String(machineCode)
+  ].filter(Boolean).join(' ').slice(0,4000));
+  return {
+    category,
+    numeric_code:machineCode,
+    has_structured_content:structured!=null,
+    text_blocks_present:texts.length,
+    upstream_result_error:result?.isError===true,
+    raw_error_retained:false
+  };
+}
+
 function cleanIds(ids) {
  if(!Array.isArray(ids)||ids.length===0||ids.length>MAX_IDS)throw new Error('cmc_public_invalid_id_count');
  const unique=[...new Set(ids.map(x=>String(x)))];
