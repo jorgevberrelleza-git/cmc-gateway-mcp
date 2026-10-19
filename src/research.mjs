@@ -1,6 +1,8 @@
 import { callCmcTool, compactToolResult, extractFirstCmcId } from './cmc-client.mjs';
 import { buildMicrostructureSnapshot } from './microstructure.mjs';
 import { buildDefiFundamentalsForAssets } from './defi-fundamentals.mjs';
+import { fetchCmcPublicQuotes, classifyCmcQuoteFailure } from './cmc-public-quotes.mjs';
+import { extractLearningFeatures } from './learning/features.mjs';
 
 async function pass(tool, args = {}) {
   return compactToolResult(await callCmcTool(tool, args));
@@ -215,11 +217,42 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   const market = await buildMarketReport();
 
   const quoteIds = [...new Set(['1027', ...cleanAssets.map(a => resolved[a].id)])].join(',');
+  const cmcIds=Object.fromEntries(cleanAssets.map(a=>[a,resolved[a].id]));
   let quotes;
+  const quoteProvenance={
+    source:'cmc_mcp',
+    mcp_failure_class:null,
+    public_fallback_attempted:false,
+    public_fallback_error_class:null,
+    paid_ai_calls_made:0
+  };
   try {
     quotes = await pass('get_crypto_quotes_latest', { id: quoteIds });
+    if(quotes?.isError){
+      const msg=quotes?.content?.filter(x=>x?.type==='text').map(x=>x.text).join(' ')||'upstream_mcp_error';
+      quoteProvenance.mcp_failure_class=classifyCmcQuoteFailure(msg);
+      // Avoid storing upstream error text, which could contain sensitive details.
+      quotes={isError:true,error:'cmc_quotes_upstream_error'};
+    }
   } catch (error) {
-    quotes = { isError: true, error: error?.message || String(error) };
+    quoteProvenance.mcp_failure_class=classifyCmcQuoteFailure(error?.message||String(error));
+    quotes={isError:true,error:'cmc_quotes_transport_error'};
+  }
+  const primaryFeatures=extractLearningFeatures({assets:cleanAssets,cmc_ids:cmcIds,quotes});
+  const primaryCovered=cleanAssets.every(asset=>Number(primaryFeatures.assets?.[asset]?.price_usd)>0);
+  if (!primaryCovered && String(process.env.LEARNING_CMC_PUBLIC_QUOTE_FALLBACK||'false').toLowerCase()==='true') {
+    quoteProvenance.public_fallback_attempted=true;
+    try {
+      // One free, unauthenticated official CMC call, no retries or unverified markets.
+      const alternate=await fetchCmcPublicQuotes({assets:cleanAssets,cmcIds});
+      quotes=alternate;
+      quoteProvenance.source='cmc_public_v3_keyless';
+    }catch(error){
+      // The primary partial response, if any, stays intact; still fail closed
+      // on unverified assets. Record only whitelisted classifications.
+      const m=String(error?.message||'');
+      quoteProvenance.public_fallback_error_class=/^cmc_public_[a-z0-9_]+$/.test(m)?m:classifyCmcQuoteFailure(m);
+    }
   }
 
   const technicalEntries = [];
@@ -267,6 +300,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
     cmc_ids: Object.fromEntries(cleanAssets.map(a => [a, resolved[a].id])),
     market,
     quotes,
+    quote_provenance:quoteProvenance,
     asset_technicals: assetTechnicals,
     relative_strength: relativeStrength,
     microstructure,
