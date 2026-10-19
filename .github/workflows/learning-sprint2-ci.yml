@@ -52,6 +52,9 @@ jobs:
       - name: Quote parser and venue gate regression self-test
         run: npm run learning:quotes:selftest
 
+      - name: CMC official public API fallback regression
+        run: npm run learning:cmc:public:selftest
+
       - name: Signed outcome diagnostic self-test
         run: npm run learning:v02:direction:selftest
 
