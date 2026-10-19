@@ -133,4 +133,16 @@ const consistencyMissing = evaluateDataConsistency(microOnly);
 assert.ok(consistencyMissing.asset_blocks.BTC.includes('missing_positive_usd_price'));
 assert.equal(consistencyMissing.blocking, true);
 
+// Missing comparable venue evidence blocks the asset rather than impersonating
+// a successful low-spread comparison.
+const unavailableVenue = {
+  ...snapshot,
+  microstructure: {assets: {
+    BTC: {available:true,venue_price_check:{available:false,reason:'missing_positive_venue_mid',material_mismatch:null}}
+  }}
+};
+const venueConsistency=evaluateDataConsistency(unavailableVenue);
+assert.ok(venueConsistency.asset_blocks.BTC.includes('venue_price_comparison_unavailable'));
+assert.equal(venueConsistency.blocking,true);
+
 console.log('learning-v2-selftest: ok');
