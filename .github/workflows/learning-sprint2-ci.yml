@@ -52,6 +52,9 @@ jobs:
       - name: Signed outcome diagnostic self-test
         run: npm run learning:v02:direction:selftest
 
+      - name: GEO primary-source scanner self-test
+        run: npm run learning:geo:selftest
+
   postgres-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
