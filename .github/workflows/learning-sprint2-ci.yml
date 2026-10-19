@@ -49,6 +49,9 @@ jobs:
       - name: Shadow v0.2 deterministic self-test
         run: npm run learning:v2:selftest
 
+      - name: Quote parser and venue gate regression self-test
+        run: npm run learning:quotes:selftest
+
       - name: Signed outcome diagnostic self-test
         run: npm run learning:v02:direction:selftest
 
