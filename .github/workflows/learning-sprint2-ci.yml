@@ -55,6 +55,9 @@ jobs:
       - name: GEO primary-source scanner self-test
         run: npm run learning:geo:selftest
 
+      - name: GEO v0.2 calendar and outcome self-test
+        run: npm run learning:geo:v02:selftest
+
   postgres-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
