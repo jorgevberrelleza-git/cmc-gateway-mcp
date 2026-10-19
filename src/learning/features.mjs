@@ -107,7 +107,9 @@ export function quoteExtractionDiagnostics(snapshot={}) {
     has_structured_content:block?.structuredContent != null,
     has_text_content:Array.isArray(block?.content) && block.content.some(x=>x.type==='text'),
     top_level_keys:block && typeof block==='object' ? Object.keys(block).slice(0,12) : [],
-    parsed_rows:rows.length,
+    parsed_rows:Object.keys(features).length,
+    received_rows:rows.length,
+    duplicated_representations:Math.max(0,rows.length-Object.keys(features).length),
     symbol_coverage:Object.fromEntries((snapshot?.assets||[]).map(s=>{
       const row=features[String(s).toUpperCase()];
       return [s,{matched:!!row,usd_price_present:!!row && rawPrice(row)!=null}];
