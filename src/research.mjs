@@ -1,7 +1,7 @@
 import { callCmcTool, compactToolResult, extractFirstCmcId } from './cmc-client.mjs';
 import { buildMicrostructureSnapshot } from './microstructure.mjs';
 import { buildDefiFundamentalsForAssets } from './defi-fundamentals.mjs';
-import { fetchCmcPublicQuotes, classifyCmcQuoteFailure } from './cmc-public-quotes.mjs';
+import { fetchCmcPublicQuotes, classifyCmcQuoteFailure, summarizeCmcMcpFailure } from './cmc-public-quotes.mjs';
 import { fetchCoinPaprikaQuotes } from './coinpaprika-quotes.mjs';
 import { extractLearningFeatures } from './learning/features.mjs';
 
@@ -223,6 +223,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   const quoteProvenance={
     source:'cmc_mcp',
     mcp_failure_class:null,
+    mcp_failure_diagnostics:null,
     public_fallback_attempted:false,
     public_fallback_error_class:null,
     coinpaprika_fallback_attempted:false,
@@ -233,7 +234,8 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
     quotes = await pass('get_crypto_quotes_latest', { id: quoteIds });
     if(quotes?.isError){
       const msg=quotes?.content?.filter(x=>x?.type==='text').map(x=>x.text).join(' ')||'upstream_mcp_error';
-      quoteProvenance.mcp_failure_class=classifyCmcQuoteFailure(msg);
+      quoteProvenance.mcp_failure_diagnostics=summarizeCmcMcpFailure(quotes);
+      quoteProvenance.mcp_failure_class=quoteProvenance.mcp_failure_diagnostics.category;
       // Avoid storing upstream error text, which could contain sensitive details.
       quotes={isError:true,error:'cmc_quotes_upstream_error'};
     }
