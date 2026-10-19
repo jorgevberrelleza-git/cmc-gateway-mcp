@@ -60,3 +60,19 @@ Nota: el orquestador es el controlador de los seis especialistas, no un séptimo
 
 ## VI. Política de promoción
 Ninguna noticia o score GEO puede crear órdenes. Para integrar: cobertura estable > siete días, evaluación por episodios con muestra suficiente, no desviación del presupuesto, ensayo simulado. La autorización de Bitso y dinero real sigue siendo humana.
+
+## VII. Actualizaciones confirmadas con documentación 2026
+| Tecnología | Hallazgo verificado | Decisión |
+| --- | --- | --- |
+| Node 20 End of Life | Node.js 20 ya no recibe parches; la CI antes usaba 20 | Actualizado GitHub Actions a Node 22 y package engine >=22. Docker ya usa Node 22; Render cron usa Node 26. Próxima evaluación de Node 24 LTS con regresión completa. |
+| GitHub Actions checkout | v7 incluye protecciones adicionales contra patrones peligrosos de pull_request_target | Actualizar de v4 a la versión probada en otro PR con matriz y permisos mínimos; el flujo actual usa push/pull_request, no pull_request_target. |
+| Bitso Diff-Orders | Los huecos de secuencia obligan a re-sincronizar libro con REST + replay | Prioridad P0 antes de considerar señales fiables de paredes y book imbalance. |
+| CMC Changelog septiembre 2026 | Publicó v5/cmc-ai/latest y cambios anteriores de coste por lote, simple price y liquidaciones | Evaluar cobertura y créditos del plan antes de habilitar llamadas nuevas. No tratar la IA de CMC como confirmación de hechos. |
+| OFAC RSS | Retirado desde febrero 2025 | Mantener deshabilitado; evaluar fuentes oficiales alternativas. |
+| SEC RSS | El emisor mantiene RSS de comunicados, pero pueden existir políticas técnicas de acceso | Pilotar con User-Agent apropiado y límites; no habilitar hasta confirmar accesibilidad. |
+
+Fuentes oficiales: https://nodejs.org/en/about/eol , https://github.com/nodejs/Release ,
+https://docs.bitso.com/bitso-api/docs/general ,
+https://coinmarketcap.com/api/documentation/changelog ,
+https://ofac.treasury.gov/recent-actions/20250206 ,
+https://www.sec.gov/about/rss-feeds .
