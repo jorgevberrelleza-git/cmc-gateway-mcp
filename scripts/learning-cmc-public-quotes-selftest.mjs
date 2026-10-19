@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { fetchCmcPublicQuotes, normalizeCmcPublicQuotesResponse, classifyCmcQuoteFailure } from '../src/cmc-public-quotes.mjs';
+import { fetchCmcPublicQuotes, normalizeCmcPublicQuotesResponse, classifyCmcQuoteFailure, summarizeCmcMcpFailure } from '../src/cmc-public-quotes.mjs';
 import { extractLearningFeatures } from '../src/learning/features.mjs';
 const assets=['BTC','ADA','AAVE'];
 const cmcIds={BTC:'1',ADA:'2010',AAVE:'7278'};
@@ -44,4 +44,15 @@ await assert.rejects(
 );
 assert.equal(requests,0);
 await assert.rejects(()=>fetchCmcPublicQuotes({assets,cmcIds,fetchImpl:async()=>({ok:false,status:429})}),/http_429/);
+const safeError=summarizeCmcMcpFailure({
+  isError:true,
+  structuredContent:{status:{error_code:1008,error_message:'quota reached'}},
+  content:[{type:'text',text:'API key secret_example 1008 quota'}]
+});
+assert.equal(safeError.numeric_code,1008);
+assert.equal(safeError.category,'rate_limited');
+assert.equal(safeError.raw_error_retained,false);
+assert.equal(JSON.stringify(safeError).includes('secret_example'),false);
+assert.equal(summarizeCmcMcpFailure({isError:true,content:[]}).category,'unclassified_upstream_error');
+
 console.log('learning-cmc-public-quotes-selftest: ok');
