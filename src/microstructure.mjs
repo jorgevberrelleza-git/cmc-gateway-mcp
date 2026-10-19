@@ -1,4 +1,5 @@
 import { collectBitsoRaw } from './bitso-client.mjs';
+import { extractLearningFeatures } from './learning/features.mjs';
 
 function num(v) {
   const n = Number(String(v ?? '').replaceAll(',', '').replaceAll('%', '').trim());
@@ -456,15 +457,26 @@ function computeSpotConfirmation(depth, wsSummary, recent, wallPressure) {
 }
 
 function venuePriceCheck(symbol, minor, depth, quotes) {
-  const q=getQuoteFor(symbol,quotes)||{};
-  const cmc=num(q?.price), mid=num(depth?.mid);
-  if(cmc==null||mid==null) return {available:false,reason:'missing_price'};
+  const symbolKey=String(symbol||'').toUpperCase();
+  // Use the SAME quote extractor that powers data-consistency. Other code paths
+  // previously treated missing/blank CMC prices as 0 and created false basis
+  // or an unavailable comparison presented as if it were a checked comparison.
+  const parsed=extractLearningFeatures({assets:[symbolKey],quotes});
+  const upstreamPrice=parsed.assets?.[symbolKey]?.price_usd;
+  const cmc=Number(upstreamPrice);
+  const mid=Number(depth?.mid);
+  const quoteSource=String(quotes?.quote_source || 'cmc_mcp');
+  if (upstreamPrice==null || !(cmc>0) || !Number.isFinite(cmc))
+    return {available:false,reason:'missing_positive_global_usd_price',quote_source:quoteSource,material_mismatch:null};
+  if (depth?.mid==null || !(mid>0) || !Number.isFinite(mid))
+    return {available:false,reason:'missing_positive_venue_mid',quote_source:quoteSource,material_mismatch:null};
   if(!['usd','usdc','usdt'].includes(String(minor||'').toLowerCase())) {
-    return {available:false,reason:`book_minor_${minor||'unknown'}_requires_fx_conversion`};
+    return {available:false,reason:`book_minor_${minor||'unknown'}_requires_fx_conversion`,quote_source:quoteSource,material_mismatch:null};
   }
   const basis=((mid-cmc)/cmc)*10000;
   return {
     available:true,
+    quote_source:quoteSource,
     cmc_usd_price:round(cmc,8),
     bitso_mid:round(mid,8),
     basis_bps:round(basis,2),
