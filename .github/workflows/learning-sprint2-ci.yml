@@ -55,6 +55,9 @@ jobs:
       - name: CMC official public API fallback regression
         run: npm run learning:cmc:public:selftest
 
+      - name: CoinPaprika free-source fallback regression
+        run: npm run learning:paprika:selftest
+
       - name: Signed outcome diagnostic self-test
         run: npm run learning:v02:direction:selftest
 
