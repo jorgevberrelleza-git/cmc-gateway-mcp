@@ -29,8 +29,10 @@ try {
     [windowStart,now.toISOString()]
   );
   const recent=history.rows;
+  const sourcesOk = status.filter(x=>x.ok).length;
   console.log('GEO_COMPACT_SUMMARY='+JSON.stringify({
-    ok:true,
+    ok:sourcesOk>0,
+    ingestion_status:sourcesOk===status.length?'complete':sourcesOk?'partial':'unavailable',
     contract_version:'shadow_geo_v0.1_scan',
     checked_at:now.toISOString(),
     source_status:status,
@@ -43,4 +45,5 @@ try {
     paid_ai_calls_made:0,
     execution_enabled:false
   }));
+  if (status.every(x=>!x.ok)) process.exitCode=1;
 } finally { await store.close(); }
