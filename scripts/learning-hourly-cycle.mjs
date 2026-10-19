@@ -171,6 +171,22 @@ if (String(process.env.LEARNING_GEO_V02_ENABLED || 'false').toLowerCase()==='tru
   };
 }
 
+// Daily evidence-only counterfactual: no trading or queue threshold changes.
+let eventNoiseAudit=null;
+if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
+    && cycleStarted.getUTCHours()===0 && collectorOk) {
+  const run=spawnSync('npm',['run','learning:event:audit'],{
+    encoding:'utf8',env:process.env,timeout:20000,maxBuffer:1024*1024
+  });
+  const line=String(run.stdout||'').split(/\r?\n/).find(x=>x.startsWith('SHADOW_EVENT_AUDIT='))||null;
+  eventNoiseAudit={
+    attempted:true,ok:run.status===0&&Boolean(line),status:run.status,
+    summary:line?line.slice(0,5000):null,
+    stderr_tail:String(run.stderr||'').trim().slice(-600),
+    execution_enabled:false
+  };
+}
+
 console.log(JSON.stringify({
   ok,
   cycle_status: cycleStatus,
@@ -185,6 +201,7 @@ console.log(JSON.stringify({
   v02_daily_report: v02DailyReport,
   geo_scan: geoScan,
   geo_scan_v02: geoV02Scan,
+  event_noise_audit: eventNoiseAudit,
   execution_enabled: false
 }, null, 2));
 if (!ok) process.exitCode = 1;
