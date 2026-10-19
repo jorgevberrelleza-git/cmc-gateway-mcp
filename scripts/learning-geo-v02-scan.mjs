@@ -9,6 +9,7 @@ const now=new Date();
 const store=createLearningStore();
 const sourceStatus=[];
 let changedCalendar=0,documentChecks=0,newOutcomes=0;
+const documentsByStatus = {};
 const allowedHosts=Object.fromEntries(GEO_SOURCES.map(x=>[x.id,x.hostname]));
 try {
   // All fetch sources are hardcoded official domains; independent errors cannot block the core cron.
@@ -37,12 +38,17 @@ try {
     changedCalendar+=result.rowCount;
   }
 
-  // Verify same-publisher document text/title only. NEVER interpret publisher provenance as market impact.
+  // Review at most 2 bounded official documents per cycle, prioritizing critical news.
+  // A low-severity report is eligible when no high/medium documents are pending,
+  // so that document verification is continuously exercised and audited.
   const outstanding=await store.pool.query(
-    `select event_key,source_id,article_url,title from learning_geo_events
-     where document_status='not_checked' and severity in ('high','medium')
+    `select event_key,source_id,article_url,title,severity from learning_geo_events
+     where document_status='not_checked'
+       and severity in ('high','medium','low')
        and first_seen_at >= $1
-     order by first_seen_at desc limit 2`,
+     order by case severity when 'high' then 0 when 'medium' then 1 else 2 end,
+              first_seen_at desc
+     limit 2`,
      [new Date(now.getTime()-4*86400000).toISOString()]
   );
   const checks=await Promise.all(outstanding.rows.map(async event=>({event,attestation:await attestGeoDocument(event,{allowedHosts})})));
@@ -54,6 +60,7 @@ try {
       [event.event_key,attestation.status,now.toISOString(),JSON.stringify(attestation.evidence)]
     );
     documentChecks++;
+    documentsByStatus[attestation.status]=(documentsByStatus[attestation.status]||0)+1;
   }
 
   // First-seen timestamps avoid hindsight. Use next available snapshot, never a pre-announcement price.
@@ -102,6 +109,7 @@ try {
     calendar_rows_processed:changedCalendar,
     upcoming:upcoming.rows,
     documents_checked_this_cycle:documentChecks,
+    documents_checked_by_status:documentsByStatus,
     document_status_counts:documentSummary.rows,
     observations_new:newOutcomes,
     observed_study:summarizeGeoOutcomes(recorded.rows),
