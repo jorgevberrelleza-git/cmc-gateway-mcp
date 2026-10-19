@@ -58,6 +58,9 @@ jobs:
       - name: CoinPaprika free-source fallback regression
         run: npm run learning:paprika:selftest
 
+      - name: Event noise audit self-test
+        run: npm run learning:event:audit:selftest
+
       - name: Live CoinPaprika source canary (read-only, no key)
         if: github.event_name == 'push'
         continue-on-error: true
