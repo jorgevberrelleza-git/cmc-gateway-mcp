@@ -38,7 +38,7 @@ for (const [name, args] of steps) {
     status: run.status,
     ok: run.status === 0,
     duration_ms: durationMs,
-    stdout_tail: String(run.stdout || '').trim().slice(-2000),
+    stdout_tail: String(run.stdout || '').trim().slice(name === 'shadow-v2' ? -9000 : -2000),
     stderr_tail: String(run.stderr || '').trim().slice(-2000)
   });
   if (name === 'collector' && run.status !== 0) break;
