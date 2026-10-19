@@ -90,4 +90,29 @@ const venue = _test.venuePriceCheck('ADA','usd',{mid:1.01},{structuredContent:{h
 assert.equal(venue.available,true);
 assert.ok(venue.basis_bps > 90);
 
+// Regression: public-source structured quotes must be compared with actual
+// Bitso USD mids. Missing values cannot become zero or a fake mismatch.
+const paprikaQuotes = {
+  isError:false,quote_source:'coinpaprika_public',
+  structuredContent:{headers:['symbol','price','quote_symbol'],rows:[['BTC',82000,'USD'],['ADA',0.22,'USD']]}
+};
+const coinpaprikaVenue = _test.venuePriceCheck('BTC','usd',{mid:82820},paprikaQuotes);
+assert.equal(coinpaprikaVenue.available,true);
+assert.equal(coinpaprikaVenue.quote_source,'coinpaprika_public');
+assert.equal(coinpaprikaVenue.material_mismatch,true);
+assert.ok(coinpaprikaVenue.basis_bps >= 99 && coinpaprikaVenue.basis_bps <= 101);
+const withinBand = _test.venuePriceCheck('BTC','usd',{mid:82246},paprikaQuotes);
+assert.equal(withinBand.available,true);
+assert.equal(withinBand.material_mismatch,false);
+const missing = _test.venuePriceCheck('AAVE','usd',{mid:150},{isError:true});
+assert.equal(missing.available,false);
+assert.equal(missing.reason,'missing_positive_global_usd_price');
+assert.equal(missing.material_mismatch,null);
+const zeroMid = _test.venuePriceCheck('ADA','usd',{mid:0},paprikaQuotes);
+assert.equal(zeroMid.available,false);
+assert.equal(zeroMid.reason,'missing_positive_venue_mid');
+const fxMissing = _test.venuePriceCheck('ADA','mxn',{mid:4.4},paprikaQuotes);
+assert.equal(fxMissing.available,false);
+assert.match(fxMissing.reason,/requires_fx_conversion/);
+
 console.log('microstructure v0.6 self-test: ok');
