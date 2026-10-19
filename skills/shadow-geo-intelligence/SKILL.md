@@ -22,6 +22,7 @@ Complemento del Financial Data Mining Agent. Alimenta contexto geopolítico al M
 ## Fuentes iniciales verificadas (2026-10-18)
 - Federal Reserve, Monetary Policy RSS: https://www.federalreserve.gov/feeds/press_monetary.xml
 - European Central Bank, Press RSS: https://www.ecb.europa.eu/rss/press.html
+- Council of the European Union, Press Releases RSS: https://www.consilium.europa.eu/en/rss/pressreleases.ashx
 
 Fuentes potenciales para fases siguientes:
 - SEC RSS oficial: https://www.sec.gov/news/pressreleases.rss (requiere evaluar condiciones de uso, User-Agent y bloqueos).
@@ -37,6 +38,6 @@ Fuentes potenciales para fases siguientes:
 - El skill no concede acceso a un sitio por mostrar una URL. URLs arbitrarias deben descartarse.
 - Un título oficial no sustituye leer el documento ni contrastar con condiciones del mercado.
 - Riesgo alto exige investigación y aprobación humana, no venta automática.
-- Conserva presupuesto: reutiliza cron existente cada 3 h; dos fuentes oficiales, sin LLM pagado.
+- Conserva presupuesto: reutiliza cron existente cada 3 h; tres fuentes oficiales, sin LLM pagado.
 - Revisión trimestral de URLs, cambios normativos y relevancia estadística.
 - Si se modifican reglas de clasificación, versionar, testear y hacer evaluación fuera de muestra.
