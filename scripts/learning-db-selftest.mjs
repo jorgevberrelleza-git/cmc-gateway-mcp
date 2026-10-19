@@ -218,6 +218,18 @@ try {
     [geoKey,snapshot.generated_at]
   );
   assert.equal(geoEvent.rowCount,1);
+  // Regression: low-severity official documents remain eligible for a
+  // bounded quality audit when no high/medium events are pending.
+  const geoDocumentAuditCandidate=await store.pool.query(
+    `select event_key from learning_geo_events
+     where document_status='not_checked'
+       and severity in ('high','medium','low')
+       and first_seen_at >= $1
+     order by case severity when 'high' then 0 when 'medium' then 1 else 2 end,
+              first_seen_at desc limit 2`,
+    [new Date(Date.parse(snapshot.generated_at)-4*86400000).toISOString()]
+  );
+  assert.ok(geoDocumentAuditCandidate.rows.some(x=>x.event_key===geoKey));
   const geoCalendar=await store.pool.query(
     `insert into learning_geo_calendar(event_key,source_id,title,scheduled_at,category,execution_enabled)
      values($1,'bls_releases','Test scheduled CPI',$2,'us_cpi',false) returning event_key`,
