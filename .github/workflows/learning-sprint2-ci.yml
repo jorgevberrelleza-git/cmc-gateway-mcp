@@ -58,6 +58,11 @@ jobs:
       - name: CoinPaprika free-source fallback regression
         run: npm run learning:paprika:selftest
 
+      - name: Live CoinPaprika source canary (read-only, no key)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: node scripts/learning-coinpaprika-live-smoke.mjs
+
       - name: Signed outcome diagnostic self-test
         run: npm run learning:v02:direction:selftest
 
