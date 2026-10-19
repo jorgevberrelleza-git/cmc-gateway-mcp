@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { evaluateDataConsistency } from '../src/learning/data-consistency.mjs';
 import { buildRegimeEvidence } from '../src/learning/regime-evidence.mjs';
 import { evaluateShadowV2 } from '../src/learning/shadow-v2.mjs';
+import { extractUsdPrices } from '../src/learning/features.mjs';
 
 function block(value) {
   return { isError: false, content: [{ type: 'text', text: JSON.stringify(value) }] };
@@ -116,5 +117,20 @@ assert.equal(evaluation.assets.BTC.action, 'HOLD');
 assert.ok(evaluation.assets.BTC.blockers.includes('microstructure:block_new_entry'));
 assert.equal(evaluation.assets.AAVE.posture, 'FUNDAMENTAL_VETO');
 assert.equal(evaluation.assets.ADA.posture, 'WAIT_RETEST_OR_CONFIRMATION');
+
+// price_source_diagnostic_regression: a venue midpoint may be valid for
+// observed research prices but does not automatically qualify for an entry.
+const microOnly = {
+  generated_at: at,
+  assets: ['BTC'],
+  quotes: null,
+  microstructure: { assets: {
+    BTC: { available: true, minor_currency: 'usd', order_book: { mid: 100 } }
+  } }
+};
+assert.equal(extractUsdPrices(microOnly).BTC, 100);
+const consistencyMissing = evaluateDataConsistency(microOnly);
+assert.ok(consistencyMissing.asset_blocks.BTC.includes('missing_positive_usd_price'));
+assert.equal(consistencyMissing.blocking, true);
 
 console.log('learning-v2-selftest: ok');
