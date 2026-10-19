@@ -1,6 +1,6 @@
 import { createLearningStore } from '../src/learning/storage.mjs';
 import { evaluateShadowV2 } from '../src/learning/shadow-v2.mjs';
-import { extractLearningFeatures, extractUsdPrices } from '../src/learning/features.mjs';
+import { extractLearningFeatures, extractUsdPrices, quoteExtractionDiagnostics } from '../src/learning/features.mjs';
 
 const store = createLearningStore();
 
@@ -46,6 +46,7 @@ try {
     },
     asset_postures: Object.fromEntries(Object.entries(evaluation.assets).map(([k,v]) => [k, v.posture])),
     external_research_trigger: evaluation.external_research_trigger,
+    quote_parser_diagnostics: quoteExtractionDiagnostics(latest.payload),
     execution_enabled: false
   }));
 } finally {
