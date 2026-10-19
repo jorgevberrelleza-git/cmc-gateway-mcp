@@ -1,116 +1,119 @@
+// CMC MCP replies can include structuredContent and a text/JSON version
+// simultaneously. Traverse both; a table nested in either one must not disappear.
 function parsePayload(block) {
   if (Array.isArray(block)) return block;
+  if (block == null) return null;
   const structured = block?.structuredContent ?? null;
+  const json = block?.content_json ?? null;
   const text = block?.content?.find?.(item => item?.type === 'text')?.text;
   let parsedText = null;
   if (typeof text === 'string') {
     try { parsedText = JSON.parse(text); } catch {}
   }
-  if (structured != null && parsedText != null) {
-    return { structuredContent: structured, content_json: parsedText };
+  if (structured != null || json != null || parsedText != null) {
+    return { structuredContent: structured, content_json: json ?? parsedText };
   }
-  if (structured != null) return structured;
-  return parsedText;
+  return block;
 }
-
-function flattenQuoteAsset(asset) {
-  if (!asset || typeof asset !== 'object') return null;
-  const quoteRaw = asset.quote;
-  let usd = null;
-  if (Array.isArray(quoteRaw)) {
-    usd = quoteRaw.find(q => String(q?.symbol || q?.convert_symbol || '').toUpperCase() === 'USD') || quoteRaw[0] || null;
-  } else if (quoteRaw && typeof quoteRaw === 'object') {
-    usd = quoteRaw.USD || quoteRaw.usd || Object.values(quoteRaw)[0] || null;
-  }
-  return {
-    ...asset,
-    ...(usd && typeof usd === 'object' ? usd : {}),
-    symbol: asset.symbol ?? usd?.symbol ?? null,
-    quote_symbol: usd?.symbol ?? null
-  };
+function positive(value) {
+  if (typeof value === 'boolean' || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
-
-function normalizeQuoteRowsPayload(p) {
-  if (!p) return [];
-  if (Array.isArray(p)) return p.map(flattenQuoteAsset).filter(Boolean);
-
-  if (Array.isArray(p.rows) && Array.isArray(p.headers)) {
-    return p.rows.map(row => Object.fromEntries(p.headers.map((h, i) => [h, row?.[i]])));
-  }
-
-  if (p.data != null) {
-    const records = Array.isArray(p.data)
-      ? p.data
-      : (typeof p.data === 'object' ? Object.values(p.data) : []);
-    const out = records.map(flattenQuoteAsset).filter(Boolean);
-    if (out.length) return out;
-  }
-
-  if (p.result != null) return normalizeQuoteRowsPayload(p.result);
-  if (p.symbol || p.quote) {
-    const single = flattenQuoteAsset(p);
-    return single ? [single] : [];
-  }
-  return [];
-}
-
-function quoteRows(snapshot) {
-  return normalizeQuoteRowsPayload(parsePayload(snapshot?.quotes));
-}
-function findAssetQuote(value, symbol, cmcId, depth = 0) {
-  if (value == null || depth > 10) return null;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findAssetQuote(item, symbol, cmcId, depth + 1);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (typeof value !== 'object') return null;
-
-  const objectSymbol = String(value.symbol || value.asset_symbol || '').toUpperCase();
-  const objectId = value.id == null ? null : String(value.id);
-  if (objectSymbol === symbol || (cmcId && objectId === String(cmcId))) {
-    const flat = flattenQuoteAsset(value);
-    if (flat && Number.isFinite(Number(flat.price ?? flat.price_usd))) {
-      return { ...flat, symbol };
-    }
-  }
-
-  const direct = value[symbol] ?? (cmcId ? value[String(cmcId)] : undefined);
-  if (direct && typeof direct === 'object') {
-    const flat = flattenQuoteAsset(direct);
-    if (flat && Number.isFinite(Number(flat.price ?? flat.price_usd))) {
-      return { ...flat, symbol };
-    }
-    const nested = findAssetQuote(direct, symbol, cmcId, depth + 1);
-    if (nested) return nested;
-  }
-
-  for (const child of Object.values(value)) {
-    const found = findAssetQuote(child, symbol, cmcId, depth + 1);
-    if (found) return found;
+function usdQuote(asset) {
+  const q = asset?.quote;
+  if (!q) return null;
+  if (Array.isArray(q)) return q.find(x => String(x?.symbol || x?.convert_symbol || x?.currency || '').toUpperCase() === 'USD') ?? null;
+  if (typeof q === 'object') {
+    if (q.USD && typeof q.USD === 'object') return q.USD;
+    if (q.usd && typeof q.usd === 'object') return q.usd;
+    if (String(q.symbol || q.convert_symbol || '').toUpperCase() === 'USD') return q;
   }
   return null;
 }
-
-function quoteMap(snapshot) {
-  const requested = (snapshot?.assets || []).map(x => String(x).toUpperCase());
-  const out = {};
-  for (const row of quoteRows(snapshot)) {
-    const symbol = String(row?.symbol || '').toUpperCase();
-    if (requested.includes(symbol)) out[symbol] = row;
+function flattenQuoteAsset(asset, key = null) {
+  if (!asset || typeof asset !== 'object' || Array.isArray(asset)) return null;
+  const usd = usdQuote(asset);
+  const symbol = asset.symbol ?? asset.asset_symbol ?? (/[A-Za-z]{2,10}/.test(String(key || '')) && !/^\\d+$/.test(String(key)) ? key : null);
+  const id = asset.id ?? (/^\\d+$/.test(String(key || '')) ? key : null);
+  return {
+    ...asset,
+    ...(usd || {}),
+    symbol: symbol ?? null,
+    id: id ?? null,
+    quote_symbol: usd ? 'USD' : (asset.quote_symbol ?? null)
+  };
+}
+function rawPrice(row) {
+  if (!row || typeof row !== 'object') return null;
+  // Reject a non-USD quote; never silently treat a stablecoin quote as USD.
+  const currency = String(row.quote_symbol || row.convert_symbol || row.convert || '').toUpperCase();
+  if (currency && currency !== 'USD') return null;
+  return positive(row.price_usd ?? row.price ?? row['price (usd)'] ?? row['Price (USD)']);
+}
+function normalizeQuoteRowsPayload(input, depth = 0, seen = new WeakSet()) {
+  if (input == null || depth > 12 || typeof input !== 'object') return [];
+  if (seen.has(input)) return [];
+  seen.add(input);
+  if (Array.isArray(input)) return input.flatMap(v => normalizeQuoteRowsPayload(v, depth + 1, seen));
+  if (input.isError === true || input.error) return [];
+  if (Array.isArray(input.headers) && Array.isArray(input.rows)) {
+    return input.rows.filter(Array.isArray).map(row => Object.fromEntries(input.headers.map((h,i) => [h,row[i]])));
   }
-
-  const payload = parsePayload(snapshot?.quotes);
-  for (const symbol of requested) {
-    if (out[symbol]) continue;
-    const found = findAssetQuote(payload, symbol, snapshot?.cmc_ids?.[symbol]);
-    if (found) out[symbol] = found;
+  // USD table and direct CMC asset objects.
+  if ((input.symbol || input.asset_symbol || input.id) && (input.price != null || input.price_usd != null || input.quote != null)) {
+    const flat = flattenQuoteAsset(input);
+    return flat ? [flat] : [];
+  }
+  if (input.data != null) {
+    const data = input.data;
+    if (Array.isArray(data)) return normalizeQuoteRowsPayload(data,depth+1,seen);
+    if (typeof data === 'object') return Object.entries(data).flatMap(([key,v]) => {
+      if (v && typeof v === 'object' && !Array.isArray(v) && (v.price != null || v.price_usd != null || v.quote)) {
+        return [flattenQuoteAsset(v,key)].filter(Boolean);
+      }
+      return normalizeQuoteRowsPayload(v,depth+1,seen);
+    });
+  }
+  const wrappers=['structuredContent','content_json','result','payload','response'];
+  const found=wrappers.flatMap(k=>normalizeQuoteRowsPayload(input[k],depth+1,seen));
+  if(found.length) return found;
+  // Numeric CMC ID keys and ticker keys when data/result wrappers are absent.
+  return Object.entries(input).flatMap(([key,value]) => {
+    if(wrappers.includes(key)) return [];
+    if(value && typeof value === 'object' && !Array.isArray(value) && (value.price != null || value.price_usd != null || value.quote)) {
+      return [flattenQuoteAsset(value,key)].filter(Boolean);
+    }
+    return normalizeQuoteRowsPayload(value,depth+1,seen);
+  });
+}
+function quoteMap(snapshot) {
+  const requested=(snapshot?.assets||[]).map(x=>String(x).toUpperCase());
+  const byId=Object.fromEntries(requested.filter(s=>snapshot?.cmc_ids?.[s]!=null).map(s=>[String(snapshot.cmc_ids[s]),s]));
+  const out={};
+  for(const row of normalizeQuoteRowsPayload(parsePayload(snapshot?.quotes))) {
+    const symbol=String(row.symbol || byId[String(row.id)] || '').toUpperCase();
+    if (!requested.includes(symbol) || rawPrice(row)==null) continue;
+    if (!out[symbol]) out[symbol]={...row,symbol};
   }
   return out;
 }
-
+export function quoteExtractionDiagnostics(snapshot={}) {
+  const block=snapshot?.quotes;
+  const rows=normalizeQuoteRowsPayload(parsePayload(block));
+  const features=quoteMap(snapshot);
+  return {
+    quote_error_flag:block?.isError === true,
+    has_structured_content:block?.structuredContent != null,
+    has_text_content:Array.isArray(block?.content) && block.content.some(x=>x.type==='text'),
+    top_level_keys:block && typeof block==='object' ? Object.keys(block).slice(0,12) : [],
+    parsed_rows:rows.length,
+    symbol_coverage:Object.fromEntries((snapshot?.assets||[]).map(s=>{
+      const row=features[String(s).toUpperCase()];
+      return [s,{matched:!!row,usd_price_present:!!row && rawPrice(row)!=null}];
+    }))
+  };
+}
 function n(value) {
   const x = Number(value);
   return Number.isFinite(x) ? x : null;
@@ -128,7 +131,7 @@ export function extractLearningFeatures(snapshot) {
     const micro = microAssets[s] || {};
     const defi = defiAssets[s] || {};
     assets[s] = {
-      price_usd: n(q.price ?? q.price_usd),
+      price_usd: rawPrice(q),
       pct_1h: n(q.percent_change_1h),
       pct_24h: n(q.percent_change_24h),
       pct_7d: n(q.percent_change_7d),
