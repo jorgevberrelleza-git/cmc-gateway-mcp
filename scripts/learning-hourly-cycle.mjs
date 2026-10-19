@@ -149,6 +149,28 @@ if (String(process.env.LEARNING_GEO_ENABLED || 'false').toLowerCase() === 'true'
   };
 }
 
+/* GEO v0.2 is an optional, read-only companion to the v0.1 scan. */
+let geoV02Scan=null;
+if (String(process.env.LEARNING_GEO_V02_ENABLED || 'false').toLowerCase()==='true'
+    && geoScan?.attempted === true
+    && collectorOk) {
+  const run=spawnSync('npm',['run','learning:geo:v02:scan'],{
+    encoding:'utf8',
+    env:process.env,
+    timeout:60000,
+    maxBuffer:2*1024*1024
+  });
+  const line=String(run.stdout || '').split(/\r?\n/).find(x=>x.startsWith('GEO_V02_SUMMARY='))||null;
+  geoV02Scan={
+    attempted:true,
+    ok:run.status===0&&Boolean(line),
+    status:run.status,
+    summary:line ? line.slice(0,14500) : null,
+    stderr_tail:String(run.stderr||'').trim().slice(-1600),
+    execution_enabled:false
+  };
+}
+
 console.log(JSON.stringify({
   ok,
   cycle_status: cycleStatus,
@@ -162,6 +184,7 @@ console.log(JSON.stringify({
   v02_one_shot: v02OneShot,
   v02_daily_report: v02DailyReport,
   geo_scan: geoScan,
+  geo_scan_v02: geoV02Scan,
   execution_enabled: false
 }, null, 2));
 if (!ok) process.exitCode = 1;
