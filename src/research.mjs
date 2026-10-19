@@ -2,6 +2,7 @@ import { callCmcTool, compactToolResult, extractFirstCmcId } from './cmc-client.
 import { buildMicrostructureSnapshot } from './microstructure.mjs';
 import { buildDefiFundamentalsForAssets } from './defi-fundamentals.mjs';
 import { fetchCmcPublicQuotes, classifyCmcQuoteFailure } from './cmc-public-quotes.mjs';
+import { fetchCoinPaprikaQuotes } from './coinpaprika-quotes.mjs';
 import { extractLearningFeatures } from './learning/features.mjs';
 
 async function pass(tool, args = {}) {
@@ -224,6 +225,8 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
     mcp_failure_class:null,
     public_fallback_attempted:false,
     public_fallback_error_class:null,
+    coinpaprika_fallback_attempted:false,
+    coinpaprika_error_class:null,
     paid_ai_calls_made:0
   };
   try {
@@ -252,6 +255,22 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
       // on unverified assets. Record only whitelisted classifications.
       const m=String(error?.message||'');
       quoteProvenance.public_fallback_error_class=/^cmc_public_[a-z0-9_]+$/.test(m)?m:classifyCmcQuoteFailure(m);
+    }
+  }
+
+  const afterCmc=extractLearningFeatures({assets:cleanAssets,cmc_ids:cmcIds,quotes});
+  const cmcCovered=cleanAssets.every(asset=>Number(afterCmc.assets?.[asset]?.price_usd)>0);
+  if(!cmcCovered && String(process.env.LEARNING_COINPAPRIKA_FALLBACK||'false').toLowerCase()==='true'){
+    quoteProvenance.coinpaprika_fallback_attempted=true;
+    try{
+      // Only research snapshots. Three official source tickers, no paid data calls,
+      // strict asset identity, USD, <=30m freshness, all 3 assets required.
+      const alternate=await fetchCoinPaprikaQuotes({assets:cleanAssets});
+      quotes=alternate;
+      quoteProvenance.source='coinpaprika_public';
+    }catch(error){
+      const m=String(error?.message||'');
+      quoteProvenance.coinpaprika_error_class=/^paprika_[a-z0-9_]+$/.test(m)?m:'paprika_unclassified_error';
     }
   }
 
