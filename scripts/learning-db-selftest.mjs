@@ -207,6 +207,38 @@ try {
   });
   assert.ok(Array.isArray(filteredEvaluations));
 
+
+  // GEO v0.2 integration: migrations, on-conflict dedupe, no trade execution.
+  const geoKey = `geo-db-selftest-${savedSnapshot.id}`;
+  const geoEvent = await store.pool.query(
+    `insert into learning_geo_events
+      (event_key,source_id,article_url,title,published_at,topic,severity,execution_enabled)
+     values($1,'fed_monetary','https://www.federalreserve.gov/test','Test macro statement',$2,'monetary_policy','low',false)
+     on conflict(event_key) do nothing returning event_key`,
+    [geoKey,snapshot.generated_at]
+  );
+  assert.equal(geoEvent.rowCount,1);
+  const geoCalendar=await store.pool.query(
+    `insert into learning_geo_calendar(event_key,source_id,title,scheduled_at,category,execution_enabled)
+     values($1,'bls_releases','Test scheduled CPI',$2,'us_cpi',false) returning event_key`,
+    [geoKey,snapshot.generated_at]
+  );
+  assert.equal(geoCalendar.rowCount,1);
+  const geoOutcome=await store.pool.query(
+    `insert into learning_geo_market_outcomes
+      (event_key,asset,horizon,baseline_snapshot_id,later_snapshot_id,baseline_at,later_at,signed_return_pct,abs_return_pct,execution_enabled)
+     values($1,'BTC','1h',$2,$2,$3,$3,0,0,false) returning execution_enabled`,
+    [geoKey,savedSnapshot.id,snapshot.generated_at]
+  );
+  assert.equal(geoOutcome.rows[0].execution_enabled,false);
+  const geoDuplicate=await store.pool.query(
+    `insert into learning_geo_market_outcomes
+      (event_key,asset,horizon,baseline_snapshot_id,later_snapshot_id,baseline_at,later_at,signed_return_pct,abs_return_pct,execution_enabled)
+     values($1,'BTC','1h',$2,$2,$3,$3,0,0,false) on conflict do nothing returning event_key`,
+    [geoKey,savedSnapshot.id,snapshot.generated_at]
+  );
+  assert.equal(geoDuplicate.rowCount,0);
+
   const stats = await store.databaseStats();
   assert.ok(stats.tables.learning_snapshots >= 1);
   assert.ok(stats.tables.learning_runtime_cycles >= 1);
