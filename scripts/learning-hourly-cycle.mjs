@@ -123,6 +123,32 @@ if (String(process.env.LEARNING_V02_DAILY_REPORT || 'false').toLowerCase() === '
   };
 }
 
+/*
+ * GEO intelligence runs in the existing cron every 3 hours when enabled.
+ * It cannot change the core cycle outcome or create a trade. Any fetch/DB
+ * failure is reported explicitly as a geo sidecar error.
+ */
+let geoScan = null;
+if (String(process.env.LEARNING_GEO_ENABLED || 'false').toLowerCase() === 'true'
+    && cycleStarted.getUTCHours() % 3 === 0
+    && collectorOk) {
+  const geo = spawnSync('npm', ['run','learning:geo:scan'],{
+    encoding:'utf8',
+    env:process.env,
+    timeout:45000,
+    maxBuffer:2*1024*1024
+  });
+  const compact = String(geo.stdout || '').split(/\r?\n/).find(x=>x.startsWith('GEO_COMPACT_SUMMARY='));
+  geoScan = {
+    attempted: true,
+    ok:geo.status===0 && Boolean(compact),
+    status:geo.status,
+    compact_summary:compact ? compact.slice(0, 9000) : null,
+    stderr_tail:String(geo.stderr || '').trim().slice(-1500),
+    execution_enabled:false
+  };
+}
+
 console.log(JSON.stringify({
   ok,
   cycle_status: cycleStatus,
@@ -135,6 +161,7 @@ console.log(JSON.stringify({
   steps: results,
   v02_one_shot: v02OneShot,
   v02_daily_report: v02DailyReport,
+  geo_scan: geoScan,
   execution_enabled: false
 }, null, 2));
 if (!ok) process.exitCode = 1;
