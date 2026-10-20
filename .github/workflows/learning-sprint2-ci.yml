@@ -61,6 +61,9 @@ jobs:
       - name: Event noise audit self-test
         run: npm run learning:event:audit:selftest
 
+      - name: Safe research gate and OOS self-test
+        run: npm run learning:safe:research:selftest
+
       - name: Live CoinPaprika source canary (read-only, no key)
         if: github.event_name == 'push'
         continue-on-error: true
