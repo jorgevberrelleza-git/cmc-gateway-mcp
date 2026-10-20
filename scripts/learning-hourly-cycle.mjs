@@ -171,6 +171,23 @@ if (String(process.env.LEARNING_GEO_V02_ENABLED || 'false').toLowerCase()==='tru
   };
 }
 
+// Fixed 4h walk-forward benchmark, next-day sidecar only, no paid/market calls.
+let walkforwardReport=null;
+if (String(process.env.LEARNING_WALKFORWARD_REPORT_ENABLED||'false').toLowerCase()==='true'
+    && cycleStarted.getUTCHours()===1 && collectorOk) {
+  const r=spawnSync('npm',['run','learning:walkforward:report'],{
+    encoding:'utf8',env:process.env,timeout:25000,maxBuffer:1024*1024
+  });
+  const line=String(r.stdout||'').split(/\r?\n/)
+    .find(x=>x.startsWith('SHADOW_WALKFORWARD_SUMMARY='))||null;
+  walkforwardReport={
+    attempted:true,ok:r.status===0&&!!line,status:r.status,
+    summary:line?line.slice(0,13000):null,
+    stderr_tail:String(r.stderr||'').trim().slice(-800),
+    position_change_allowed:false,execution_enabled:false
+  };
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
@@ -202,6 +219,7 @@ console.log(JSON.stringify({
   geo_scan: geoScan,
   geo_scan_v02: geoV02Scan,
   event_noise_audit: eventNoiseAudit,
+  walkforward_report: walkforwardReport,
   execution_enabled: false
 }, null, 2));
 if (!ok) process.exitCode = 1;
