@@ -1,6 +1,7 @@
 import { buildTradingSnapshot } from '../src/research.mjs';
 import { detectMaterialEvent } from '../src/learning/event-detector.mjs';
 import { buildDecisionQueueItem } from '../src/learning/decision-queue.mjs';
+import { classifyResearchQueueEvent } from '../src/learning/research-queue-gate.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
 
 function parseAssets() {
@@ -36,7 +37,10 @@ try {
 
   const saved = await store.saveSnapshot(snapshot, { source, materialEvent });
   let queued = null;
-  const queueItem = buildDecisionQueueItem(saved, materialEvent);
+  const queueGate=classifyResearchQueueEvent(materialEvent,{
+    enabled:String(process.env.LEARNING_RESEARCH_QUEUE_GATE_ENABLED||'false').toLowerCase()==='true'
+  });
+  const queueItem=queueGate.should_queue ? buildDecisionQueueItem(saved, materialEvent) : null;
   if (queueItem) queued = await store.enqueueDecisionReview({
     snapshotId: queueItem.snapshot_id,
     queueKey: queueItem.queue_key,
@@ -51,6 +55,7 @@ try {
     sha256: saved.sha256,
     material_event: materialEvent.material,
     reasons: materialEvent.reasons,
+    research_queue_gate:queueGate,
     decision_queue: queued ? {
       id: queued.id,
       status: queued.status,
