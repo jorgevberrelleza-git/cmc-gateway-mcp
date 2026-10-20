@@ -1,7 +1,7 @@
 import { callCmcTool, compactToolResult, extractFirstCmcId } from './cmc-client.mjs';
 import { buildMicrostructureSnapshot } from './microstructure.mjs';
 import { buildDefiFundamentalsForAssets } from './defi-fundamentals.mjs';
-import { fetchCmcPublicQuotes, classifyCmcQuoteFailure, summarizeCmcMcpFailure } from './cmc-public-quotes.mjs';
+import { fetchCmcPublicQuotes, classifyCmcQuoteFailure, summarizeCmcMcpFailure, summarizeCmcThrownError } from './cmc-public-quotes.mjs';
 import { fetchCoinPaprikaQuotes } from './coinpaprika-quotes.mjs';
 import { extractLearningFeatures } from './learning/features.mjs';
 
@@ -240,7 +240,8 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
       quotes={isError:true,error:'cmc_quotes_upstream_error'};
     }
   } catch (error) {
-    quoteProvenance.mcp_failure_class=classifyCmcQuoteFailure(error?.message||String(error));
+    quoteProvenance.mcp_failure_diagnostics=summarizeCmcThrownError(error);
+    quoteProvenance.mcp_failure_class=quoteProvenance.mcp_failure_diagnostics.category;
     quotes={isError:true,error:'cmc_quotes_transport_error'};
   }
   const primaryFeatures=extractLearningFeatures({assets:cleanAssets,cmc_ids:cmcIds,quotes});
