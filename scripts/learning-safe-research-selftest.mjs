@@ -29,7 +29,7 @@ function snap(at,px,spot=70,trap=20,{blocked=false,source='coinpaprika_public'}=
   quotes:{structuredContent:{headers:['symbol','price','quote_symbol'],rows:[
    ['BTC',px,'USD'],['ADA',0.2,'USD'],['AAVE',150,'USD']
   ]}},
-  microstructure:micro,quote_provenance:{source}
+  microstructure:{assets:micro},quote_provenance:{source}
  }};
 }
 const base=Date.parse('2026-10-01T00:00:00Z');
