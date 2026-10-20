@@ -58,6 +58,22 @@ export function summarizeCmcMcpFailure(result) {
   };
 }
 
+export function summarizeCmcThrownError(error) {
+  const name=String(error?.name||'');
+  const message=String(error?.message||'').slice(0,1500);
+  const candidate=error?.code ?? error?.statusCode ?? error?.status ?? error?.response?.status ?? null;
+  const code=(typeof candidate==='number'||typeof candidate==='string') ? Number(candidate) : NaN;
+  const numeric=Number.isInteger(code)&&code>=-32768&&code<=100000?code:null;
+  const category=classifyCmcQuoteFailure(message+' '+(numeric==null?'':numeric));
+  return {
+    category,
+    numeric_code:numeric,
+    exception_type:['McpError','TimeoutError','AbortError','TypeError','Error'].includes(name)?name:'other',
+    thrown_error:true,
+    raw_error_retained:false
+  };
+}
+
 function cleanIds(ids) {
  if(!Array.isArray(ids)||ids.length===0||ids.length>MAX_IDS)throw new Error('cmc_public_invalid_id_count');
  const unique=[...new Set(ids.map(x=>String(x)))];
