@@ -16,7 +16,9 @@ export const WALKFORWARD_RULES=Object.freeze({
   execution_enabled:false
 });
 const round=(v,d=4)=>v==null||!Number.isFinite(v)?null:Number(v.toFixed(d));
-function price(v){const n=Number(v);return Number.isFinite(n)&&n>0?n:null;}
+// null and undefined are missing evidence, never an observed zero.
+function indicator(v){if(v==null||typeof v==='boolean')return null;const n=Number(v);return Number.isFinite(n)?n:null;}
+function price(v){const n=indicator(v);return n!=null&&n>0?n:null;}
 function parseTime(x){const t=Date.parse(x);return Number.isFinite(t)?t:null;}
 export function predeclaredHypothesis(snapshot={},symbol='BTC'){
   const asset=String(symbol).toUpperCase();
@@ -28,25 +30,31 @@ export function predeclaredHypothesis(snapshot={},symbol='BTC'){
   const hasVenue=snapshot?.microstructure?.assets?.[asset]?.available===true;
   if(hasVenue && validVenue?.available!==true)return {signal:'NO_DATA',why:'venue_unchecked'};
   if(f.execution_gate==='BLOCK_NEW_ENTRY_UNTIL_CLEANER_DATA')return {signal:'FLAT',why:'microstructure_gate'};
-  if(asset==='AAVE' && (f.fundamental_confirmation!=='confirms'||Number(f.fundamental_quality)<65))
+  if(asset==='AAVE' && (f.fundamental_confirmation!=='confirms'||indicator(f.fundamental_quality)<65))
     return {signal:'FLAT',why:'fundamental_not_confirmed'};
-  // Do not invent missing indicators: a non-signal is not a BUY.
-  if(!Number.isFinite(Number(f.spot_confirmation))||!Number.isFinite(Number(f.trap_risk))||
-     !Number.isFinite(Number(f.microstructure_confidence)))return {signal:'FLAT',why:'insufficient_microstructure'};
-  if(Number(f.spot_confirmation)>=65 && Number(f.trap_risk)<=35 &&
-      Number(f.microstructure_confidence)>=55)
+  // Missing metrics cannot be silently converted to zeros: distinguish
+  // unavailable research evidence from a genuinely weak observed setup.
+  const spot=indicator(f.spot_confirmation),trap=indicator(f.trap_risk),confidence=indicator(f.microstructure_confidence);
+  if(spot==null||trap==null||confidence==null)
+    return {signal:'NO_DATA',why:'insufficient_microstructure'};
+  if(spot>=65 && trap<=35 && confidence>=55)
     return {signal:'LONG_HYPOTHESIS',why:'strong_spot_low_trap'};
   return {signal:'FLAT',why:'no_three_factor_alignment'};
 }
 function roundTripCost(snapshot={},asset,rule=WALKFORWARD_RULES){
  const depth=snapshot?.microstructure?.assets?.[asset]?.order_book;
- const spread=Number(depth?.spread_bps);
+ const spread=indicator(depth?.spread_bps);
  const spreadVal=Number.isFinite(spread)&&spread>=0 ? Math.min(spread,150) : rule.missing_spread_assumed_bps;
  return (rule.cost_roundtrip_bps+spreadVal)/100; // bps -> percent
 }
 function stat(rows=[]){
- const avg=key=>rows.length ? round(rows.reduce((sum,x)=>sum+x[key],0)/rows.length) : null;
- const trades=rows.filter(x=>x.signal==='LONG_HYPOTHESIS');
+ // NO_DATA is not a flat/cash trading decision. Exclude it from any
+ // strategy-v-HODL performance comparison, while reporting coverage.
+ const eligible=rows.filter(x=>x.signal!=='NO_DATA');
+ const avg=key=>eligible.length ? round(eligible.reduce((sum,x)=>sum+x[key],0)/eligible.length) : null;
+ const trades=eligible.filter(x=>x.signal==='LONG_HYPOTHESIS');
+ const reason_counts=Object.fromEntries([...new Set(rows.map(r=>r.why||'unknown'))].sort()
+   .map(why=>[why,rows.filter(r=>(r.why||'unknown')===why).length]));
  const wins=trades.filter(x=>x.net_trade_return_pct>0).length;
  const n=trades.length, z=1.96;
  const p=n?wins/n:0, denom=1+z*z/(n||1);
@@ -54,7 +62,10 @@ function stat(rows=[]){
  const upper=n?((p+z*z/(2*n)+z*Math.sqrt((p*(1-p)+z*z/(4*n))/n))/denom)*100:null;
  return {
    windows:rows.length,
-   long_hypotheses:n, flat_or_missing:rows.length-n,
+   comparable_windows:eligible.length,
+   excluded_no_data_windows:rows.length-eligible.length,
+   reason_counts,
+   long_hypotheses:n, flat_or_missing:eligible.length-n,
    mean_signal_strategy_return_pct:avg('strategy_return_pct'),
    mean_hodl_same_windows_pct:avg('hold_return_pct'),
    mean_excess_vs_hodl_pp:avg('excess_vs_hodl_pp'),
@@ -62,6 +73,7 @@ function stat(rows=[]){
    positive_long_rate_pct:n?round(100*wins/n,2):null,
    positive_long_rate_wilson_95_pct:n?[round(lower,2),round(upper,2)]:null,
    cost_model:'40bps_roundtrip_fee_and_slippage_plus_observed_spread_or_30bps_fallback',
+   excludes_unusable_signals_from_return_comparison:true,
    compounding_simulated:false
  };
 }
@@ -124,7 +136,7 @@ export function evaluateWalkforward(snapshots=[],{
      statistically_actionable:false,
      reasons:[
        'fixed_rules_no_fitted_model',
-       ...(testSummary.windows<rules.minimum_test_windows?['insufficient_oos_windows']:[]),
+       ...(testSummary.comparable_windows<rules.minimum_test_windows?['insufficient_oos_windows']:[]),
        ...(testSummary.long_hypotheses<rules.minimum_test_trades?['insufficient_oos_hypotheses']:[]),
        'no_verified_macro_catalyst_gate',
        'not_compounded_and_not_a_live_paper_portfolio',
@@ -133,7 +145,7 @@ export function evaluateWalkforward(snapshots=[],{
    };
  }
  return {
-  contract_version:'shadow_walkforward_predeclared_v0.1',
+  contract_version:'shadow_walkforward_predeclared_v0.2_diagnostics',
   start:sorted[0]?.generated_at||null,
   through:sorted.at(-1)?.generated_at||null,
   snapshots:sorted.length,nonoverlapping_anchors:anchors,
