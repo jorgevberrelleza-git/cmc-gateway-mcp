@@ -50,4 +50,20 @@ const stale=evaluateWalkforward(rows,{now:new Date(base+8*4*3600000)});
 assert.ok(stale.snapshots<first.snapshots);
 assert.equal(stale.position_change_allowed,false);
 assert.equal(first.execution_enabled,false);
+// A missing spot observation is unknown, not observed 0 and not a cash signal.
+// It must not contaminate the OOS return comparison.
+const missingMicro = snap(base,100,null,20).payload;
+assert.deepEqual(predeclaredHypothesis(missingMicro,'BTC'),{
+  signal:'NO_DATA',why:'insufficient_microstructure'
+});
+const rowsWithGap=rows.map((r,i)=>i===24?snap(base+i*4*3600000,100*(1+i*0.01),null,20):r);
+const gaps=evaluateWalkforward(rowsWithGap,{now:new Date(base+36*4*3600000+3600000)});
+assert.ok(gaps.assets.BTC.test.excluded_no_data_windows>=1);
+assert.ok(gaps.assets.BTC.test.reason_counts.insufficient_microstructure>=1);
+assert.equal(gaps.assets.BTC.test.comparable_windows+gaps.assets.BTC.test.excluded_no_data_windows,
+  gaps.assets.BTC.test.windows);
+assert.ok(Math.abs(first.assets.BTC.test.mean_excess_vs_hodl_pp+0.7)<0.0001,
+  'missing spread must invoke the full 30bps fallback, not be mistaken for spread=0');
+assert.equal(first.assets.BTC.test.excluded_no_data_windows,0);
+
 console.log('learning-safe-research-selftest: ok');
