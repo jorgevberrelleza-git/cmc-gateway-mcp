@@ -87,10 +87,15 @@ function statusProblem(value) {
  return Number.isFinite(code)&&code!==0?'cmc_public_api_status_error':null;
 }
 function isKnownUsdAsset(row) {
- const usd=row?.quote?.USD??row?.quote?.usd;
+ const quotes=row?.quote;
+ const usd=Array.isArray(quotes)
+   ? quotes.find(x=>String(x?.symbol||x?.convert_symbol||'').toUpperCase()==='USD')
+   : (quotes?.USD??quotes?.usd??(String(quotes?.symbol||'').toUpperCase()==='USD'?quotes:null));
+ // v3 emits quote as an array of quote-currency objects; do not drop all
+ // assets when encountering the official array representation. Never use EUR.
  const direct=row?.price_usd;
  const price=Number(usd?.price??direct);
- return Number.isFinite(price)&&price>0;
+ return (usd?.price!=null||direct!=null)&&Number.isFinite(price)&&price>0;
 }
 export function normalizeCmcPublicQuotesResponse(body,{assets=[],cmcIds={}}={}) {
  if(!body||typeof body!=='object'||body.status?.error_message && statusProblem(body))throw new Error('cmc_public_api_status_error');
