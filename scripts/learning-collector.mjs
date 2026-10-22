@@ -3,6 +3,7 @@ import { detectMaterialEvent } from '../src/learning/event-detector.mjs';
 import { buildDecisionQueueItem } from '../src/learning/decision-queue.mjs';
 import { classifyResearchQueueEvent } from '../src/learning/research-queue-gate.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
+import { decideCmcMcpProbe } from '../src/learning/cmc-mcp-circuit.mjs';
 
 function parseAssets() {
   return String(process.env.LEARNING_ASSETS || 'BTC,AAVE,ADA')
@@ -17,8 +18,11 @@ const source = process.env.LEARNING_SOURCE || 'cron';
 const store = createLearningStore();
 
 try {
-  const previousRow = await store.latestSnapshot();
+  const recentRows = await store.recentSnapshots(12);
+  const previousRow = recentRows[0] || null;
+  const cmcMcpCircuit = decideCmcMcpProbe(recentRows,{enabled:String(process.env.LEARNING_CMC_MCP_CIRCUIT_ENABLED||'false').toLowerCase()==='true'});
   const snapshot = await buildTradingSnapshot({
+    cmcMcpCircuit,
     assets: parseAssets(),
     includeMicrostructure: String(process.env.LEARNING_INCLUDE_MICROSTRUCTURE || 'true').toLowerCase() !== 'false',
     captureMs
@@ -56,6 +60,7 @@ try {
     material_event: materialEvent.material,
     reasons: materialEvent.reasons,
     research_queue_gate:queueGate,
+    cmc_mcp_circuit:cmcMcpCircuit,
     decision_queue: queued ? {
       id: queued.id,
       status: queued.status,
