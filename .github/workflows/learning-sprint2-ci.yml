@@ -64,6 +64,11 @@ jobs:
       - name: Safe research gate and OOS self-test
         run: npm run learning:safe:research:selftest
 
+      - name: CMC keyless v3 versus v2 response-shape diagnostic (read-only)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: node scripts/learning-cmc-shape-live-probe.mjs
+
       - name: Live CoinPaprika source canary (read-only, no key)
         if: github.event_name == 'push'
         continue-on-error: true
