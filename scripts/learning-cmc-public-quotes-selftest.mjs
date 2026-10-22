@@ -15,6 +15,26 @@ const features=extractLearningFeatures({assets,cmc_ids:cmcIds,quotes:res});
 assert.equal(features.assets.BTC.price_usd,70000);
 assert.equal(features.assets.AAVE.price_usd,200);
 assert.equal(features.assets.ADA.price_usd,0.5);
+
+// Official CMC v3 can express USD as an array, not only quote.USD.
+// EUR-first must never be misinterpreted as the USD price.
+const officialV3Array={status:{error_code:'0'},data:[
+ {id:1,symbol:'BTC',quote:[{symbol:'EUR',price:59000},{symbol:'USD',price:70001}]},
+ {id:2010,symbol:'ADA',quote:[{symbol:'USD',price:0.501}]},
+ {id:7278,symbol:'AAVE',quote:[{symbol:'USD',price:201}]}
+]};
+const arrayRes=normalizeCmcPublicQuotesResponse(officialV3Array,{assets,cmcIds});
+const arrayPrices=extractLearningFeatures({assets,cmc_ids:cmcIds,quotes:arrayRes});
+assert.equal(arrayPrices.assets.BTC.price_usd,70001);
+assert.equal(arrayPrices.assets.ADA.price_usd,0.501);
+assert.equal(arrayPrices.assets.AAVE.price_usd,201);
+assert.throws(()=>normalizeCmcPublicQuotesResponse({
+ ...officialV3Array,data:officialV3Array.data.map(v=>v.id===2010?{...v,quote:[{symbol:'EUR',price:0.4}]}:v)
+},{assets,cmcIds}),/coverage_incomplete/);
+assert.throws(()=>normalizeCmcPublicQuotesResponse({
+ ...officialV3Array,data:officialV3Array.data.map(v=>v.id===7278?{...v,symbol:'BTC'}:v)
+},{assets,cmcIds}),/coverage_incomplete/);
+
 assert.throws(()=>normalizeCmcPublicQuotesResponse({...data,data:data.data.slice(0,2)},{assets,cmcIds}),/coverage_incomplete/);
 assert.throws(()=>normalizeCmcPublicQuotesResponse({...data,status:{error_code:1001}},{assets,cmcIds}),/api_status_error/);
 assert.throws(()=>normalizeCmcPublicQuotesResponse({...data,data:data.data.map(x=>x.id===1?{...x,symbol:'ETH'}:x)},{assets,cmcIds}),/coverage_incomplete/);
