@@ -1,6 +1,9 @@
 import { callCmcTool, compactToolResult, extractFirstCmcId } from './cmc-client.mjs';
 import { buildMicrostructureSnapshot } from './microstructure.mjs';
 import { buildDefiFundamentalsForAssets } from './defi-fundamentals.mjs';
+import { fetchCmcPublicQuotes, classifyCmcQuoteFailure, summarizeCmcMcpFailure, summarizeCmcThrownError } from './cmc-public-quotes.mjs';
+import { fetchCoinPaprikaQuotes } from './coinpaprika-quotes.mjs';
+import { extractLearningFeatures } from './learning/features.mjs';
 
 async function pass(tool, args = {}) {
   return compactToolResult(await callCmcTool(tool, args));
@@ -8,22 +11,61 @@ async function pass(tool, args = {}) {
 
 
 function parseCompactPayload(result) {
-  if (result?.structuredContent != null) return result.structuredContent;
+  const structured = result?.structuredContent ?? null;
+  let parsedText = null;
   for (const block of result?.content || []) {
     if (block?.type !== 'text') continue;
-    try { return JSON.parse(block.text); } catch {}
+    try { parsedText = JSON.parse(block.text); break; } catch {}
   }
-  return null;
+  if (structured != null && parsedText != null) {
+    return { structuredContent: structured, content_json: parsedText };
+  }
+  if (structured != null) return structured;
+  return parsedText;
 }
 
-function quoteRowsFromCompact(quotes) {
-  const p = parseCompactPayload(quotes);
+function flattenQuoteAsset(asset) {
+  if (!asset || typeof asset !== 'object') return null;
+  const quoteRaw = asset.quote;
+  let usd = null;
+  if (Array.isArray(quoteRaw)) {
+    usd = quoteRaw.find(q => String(q?.symbol || q?.convert_symbol || '').toUpperCase() === 'USD') || quoteRaw[0] || null;
+  } else if (quoteRaw && typeof quoteRaw === 'object') {
+    usd = quoteRaw.USD || quoteRaw.usd || Object.values(quoteRaw)[0] || null;
+  }
+  return {
+    ...asset,
+    ...(usd && typeof usd === 'object' ? usd : {}),
+    symbol: asset.symbol ?? usd?.symbol ?? null,
+    quote_symbol: usd?.symbol ?? null
+  };
+}
+
+function normalizeQuoteRowsPayload(p) {
   if (!p) return [];
-  if (Array.isArray(p)) return p;
+  if (Array.isArray(p)) return p.map(flattenQuoteAsset).filter(Boolean);
+
   if (Array.isArray(p.rows) && Array.isArray(p.headers)) {
-    return p.rows.map(row => Object.fromEntries(p.headers.map((h, i) => [h, row[i]])));
+    return p.rows.map(row => Object.fromEntries(p.headers.map((h, i) => [h, row?.[i]])));
+  }
+
+  if (p.data != null) {
+    const records = Array.isArray(p.data)
+      ? p.data
+      : (typeof p.data === 'object' ? Object.values(p.data) : []);
+    const out = records.map(flattenQuoteAsset).filter(Boolean);
+    if (out.length) return out;
+  }
+
+  if (p.result != null) return normalizeQuoteRowsPayload(p.result);
+  if (p.symbol || p.quote) {
+    const single = flattenQuoteAsset(p);
+    return single ? [single] : [];
   }
   return [];
+}
+function quoteRowsFromCompact(quotes) {
+  return normalizeQuoteRowsPayload(parseCompactPayload(quotes));
 }
 
 function n(v) {
@@ -153,7 +195,7 @@ export async function buildAssetResearch(query, newsLimit = 5) {
   };
 }
 
-export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], includeMicrostructure = true, captureMs } = {}) {
+export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], includeMicrostructure = true, captureMs, cmcMcpCircuit = null } = {}) {
   const cleanAssets = [...new Set(
     (Array.isArray(assets) ? assets : [])
       .map(x => String(x || '').trim().toUpperCase())
@@ -173,22 +215,90 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   //   batched quotes (assets + ETH benchmark) = 1 call
   //   technicals = 1 call per asset (max 3)
   // Total = max 9 CMC tool calls, deliberately below the observed free-tier ceiling.
-  const market = await buildMarketReport();
+  const allowMcp = cmcMcpCircuit?.attempt !== false;
+  const market = allowMcp ? await buildMarketReport() :
+    Object.fromEntries(['global','technicals','derivatives','narratives','events'].map(k=>
+      [k,{isError:true,error:'cmc_mcp_recovery_cooldown'}]));
 
   const quoteIds = [...new Set(['1027', ...cleanAssets.map(a => resolved[a].id)])].join(',');
+  const cmcIds=Object.fromEntries(cleanAssets.map(a=>[a,resolved[a].id]));
   let quotes;
-  try {
+  const quoteProvenance={
+    source:'cmc_mcp',
+    mcp_probe_attempted:allowMcp,
+    mcp_circuit_reason:cmcMcpCircuit?.reason||'unconfigured',
+    mcp_failure_class:null,
+    mcp_failure_diagnostics:null,
+    public_fallback_attempted:false,
+    public_fallback_error_class:null,
+    coinpaprika_fallback_attempted:false,
+    coinpaprika_error_class:null,
+    paid_ai_calls_made:0
+  };
+  if(!allowMcp) {
+    quotes={isError:true,error:'cmc_mcp_recovery_cooldown'};
+    quoteProvenance.mcp_failure_class='circuit_open';
+    quoteProvenance.mcp_failure_diagnostics={
+      category:'circuit_open',numeric_code:null,thrown_error:false,raw_error_retained:false
+    };
+  } else try {
     quotes = await pass('get_crypto_quotes_latest', { id: quoteIds });
+    if(quotes?.isError){
+      const msg=quotes?.content?.filter(x=>x?.type==='text').map(x=>x.text).join(' ')||'upstream_mcp_error';
+      quoteProvenance.mcp_failure_diagnostics=summarizeCmcMcpFailure(quotes);
+      quoteProvenance.mcp_failure_class=quoteProvenance.mcp_failure_diagnostics.category;
+      // Avoid storing upstream error text, which could contain sensitive details.
+      quotes={isError:true,error:'cmc_quotes_upstream_error'};
+    }
   } catch (error) {
-    quotes = { isError: true, error: error?.message || String(error) };
+    quoteProvenance.mcp_failure_diagnostics=summarizeCmcThrownError(error);
+    quoteProvenance.mcp_failure_class=quoteProvenance.mcp_failure_diagnostics.category;
+    quotes={isError:true,error:'cmc_quotes_transport_error'};
+  }
+  const primaryFeatures=extractLearningFeatures({assets:cleanAssets,cmc_ids:cmcIds,quotes});
+  const primaryCovered=cleanAssets.every(asset=>Number(primaryFeatures.assets?.[asset]?.price_usd)>0);
+  if (!primaryCovered && String(process.env.LEARNING_CMC_PUBLIC_QUOTE_FALLBACK||'false').toLowerCase()==='true') {
+    quoteProvenance.public_fallback_attempted=true;
+    try {
+      // One free, unauthenticated official CMC call, no retries or unverified markets.
+      const alternate=await fetchCmcPublicQuotes({assets:cleanAssets,cmcIds});
+      quotes=alternate;
+      quoteProvenance.source='cmc_public_v3_keyless';
+    }catch(error){
+      // The primary partial response, if any, stays intact; still fail closed
+      // on unverified assets. Record only whitelisted classifications.
+      const m=String(error?.message||'');
+      quoteProvenance.public_fallback_error_class=/^cmc_public_[a-z0-9_]+$/.test(m)?m:classifyCmcQuoteFailure(m);
+    }
+  }
+
+  const afterCmc=extractLearningFeatures({assets:cleanAssets,cmc_ids:cmcIds,quotes});
+  const cmcCovered=cleanAssets.every(asset=>Number(afterCmc.assets?.[asset]?.price_usd)>0);
+  if(!cmcCovered && String(process.env.LEARNING_COINPAPRIKA_FALLBACK||'false').toLowerCase()==='true'){
+    quoteProvenance.coinpaprika_fallback_attempted=true;
+    try{
+      // Only research snapshots. Three official source tickers, no paid data calls,
+      // strict asset identity, USD, <=30m freshness, all 3 assets required.
+      const alternate=await fetchCoinPaprikaQuotes({assets:cleanAssets});
+      quotes=alternate;
+      quoteProvenance.source='coinpaprika_public';
+    }catch(error){
+      const m=String(error?.message||'');
+      quoteProvenance.coinpaprika_error_class=/^paprika_[a-z0-9_]+$/.test(m)?m:'paprika_unclassified_error';
+    }
   }
 
   const technicalEntries = [];
   for (const asset of cleanAssets) {
+    if(!allowMcp) {
+      technicalEntries.push([asset,{isError:true,error:'cmc_mcp_recovery_cooldown'}]);
+      continue;
+    }
     try {
       technicalEntries.push([asset, await pass('get_crypto_technical_analysis', { id: resolved[asset].id })]);
     } catch (error) {
-      technicalEntries.push([asset, { isError: true, error: error?.message || String(error) }]);
+      // Do not write arbitrary upstream text or credentials into snapshots.
+      technicalEntries.push([asset, { isError: true, error: summarizeCmcThrownError(error).category }]);
     }
   }
   const assetTechnicals = Object.fromEntries(technicalEntries);
@@ -228,6 +338,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
     cmc_ids: Object.fromEntries(cleanAssets.map(a => [a, resolved[a].id])),
     market,
     quotes,
+    quote_provenance:quoteProvenance,
     asset_technicals: assetTechnicals,
     relative_strength: relativeStrength,
     microstructure,

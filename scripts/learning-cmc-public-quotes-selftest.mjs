@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import { fetchCmcPublicQuotes, normalizeCmcPublicQuotesResponse, classifyCmcQuoteFailure, summarizeCmcMcpFailure } from '../src/cmc-public-quotes.mjs';
+import { extractLearningFeatures } from '../src/learning/features.mjs';
+const assets=['BTC','ADA','AAVE'];
+const cmcIds={BTC:'1',ADA:'2010',AAVE:'7278'};
+const data={status:{error_code:0},data:[
+ {id:1,symbol:'BTC',quote:{USD:{price:70000,percent_change_24h:1.5}}},
+ {id:2010,symbol:'ADA',quote:{USD:{price:0.5}}},
+ {id:7278,symbol:'AAVE',quote:{USD:{price:200}}}
+]};
+const res=normalizeCmcPublicQuotesResponse(data,{assets,cmcIds});
+assert.equal(res.isError,false);
+assert.equal(res.quote_source,'cmc_public_v3_keyless');
+const features=extractLearningFeatures({assets,cmc_ids:cmcIds,quotes:res});
+assert.equal(features.assets.BTC.price_usd,70000);
+assert.equal(features.assets.AAVE.price_usd,200);
+assert.equal(features.assets.ADA.price_usd,0.5);
+
+// Official CMC v3 can express USD as an array, not only quote.USD.
+// EUR-first must never be misinterpreted as the USD price.
+const officialV3Array={status:{error_code:'0'},data:[
+ {id:1,symbol:'BTC',quote:[{symbol:'EUR',price:59000},{symbol:'USD',price:70001}]},
+ {id:2010,symbol:'ADA',quote:[{symbol:'USD',price:0.501}]},
+ {id:7278,symbol:'AAVE',quote:[{symbol:'USD',price:201}]}
+]};
+const arrayRes=normalizeCmcPublicQuotesResponse(officialV3Array,{assets,cmcIds});
+const arrayPrices=extractLearningFeatures({assets,cmc_ids:cmcIds,quotes:arrayRes});
+assert.equal(arrayPrices.assets.BTC.price_usd,70001);
+assert.equal(arrayPrices.assets.ADA.price_usd,0.501);
+assert.equal(arrayPrices.assets.AAVE.price_usd,201);
+assert.throws(()=>normalizeCmcPublicQuotesResponse({
+ ...officialV3Array,data:officialV3Array.data.map(v=>v.id===2010?{...v,quote:[{symbol:'EUR',price:0.4}]}:v)
+},{assets,cmcIds}),/coverage_incomplete/);
+assert.throws(()=>normalizeCmcPublicQuotesResponse({
+ ...officialV3Array,data:officialV3Array.data.map(v=>v.id===7278?{...v,symbol:'BTC'}:v)
+},{assets,cmcIds}),/coverage_incomplete/);
+
+assert.throws(()=>normalizeCmcPublicQuotesResponse({...data,data:data.data.slice(0,2)},{assets,cmcIds}),/coverage_incomplete/);
+assert.throws(()=>normalizeCmcPublicQuotesResponse({...data,status:{error_code:1001}},{assets,cmcIds}),/api_status_error/);
+assert.throws(()=>normalizeCmcPublicQuotesResponse({...data,data:data.data.map(x=>x.id===1?{...x,symbol:'ETH'}:x)},{assets,cmcIds}),/coverage_incomplete/);
+assert.throws(()=>normalizeCmcPublicQuotesResponse({...data,data:data.data.map(x=>x.id===1?{...x,quote:{EUR:{price:50000}}}:x)},{assets,cmcIds}),/coverage_incomplete/);
+assert.equal(classifyCmcQuoteFailure('429 Too Many Requests'),'rate_limited');
+assert.equal(classifyCmcQuoteFailure('auth forbidden'),'authentication_or_entitlement');
+let called=0;
+const fakeFetch=async(url,opts)=>{
+ called++;
+ const u=new URL(url);
+ assert.equal(u.origin,'https://pro-api.coinmarketcap.com');
+ assert.equal(u.pathname,'/public-api/v3/cryptocurrency/quotes/latest');
+ assert.equal(u.searchParams.get('convert'),'USD');
+ assert.equal(u.searchParams.get('id'),'1,2010,7278');
+ assert.equal(opts.method,'GET');
+ assert.equal(opts.redirect,'error');
+ assert.ok(!Object.keys(opts.headers).some(x=>/key|auth/i.test(x)));
+ return {status:200,ok:true,headers:{get:()=>null},text:async()=>JSON.stringify(data)};
+};
+const full=await fetchCmcPublicQuotes({assets,cmcIds,fetchImpl:fakeFetch});
+assert.equal(called,1);
+assert.equal(extractLearningFeatures({assets,cmc_ids:cmcIds,quotes:full}).assets.BTC.price_usd,70000);
+let requests=0;
+await assert.rejects(
+ ()=>fetchCmcPublicQuotes({assets,cmcIds:{BTC:'1',ADA:'2010',AAVE:'1x'},fetchImpl:async()=>{requests++;throw new Error('network invoked');}}),
+ /cmc_public_invalid_id/
+);
+assert.equal(requests,0);
+await assert.rejects(()=>fetchCmcPublicQuotes({assets,cmcIds,fetchImpl:async()=>({ok:false,status:429})}),/http_429/);
+const safeError=summarizeCmcMcpFailure({
+  isError:true,
+  structuredContent:{status:{error_code:1008,error_message:'quota reached'}},
+  content:[{type:'text',text:'API key secret_example 1008 quota'}]
+});
+assert.equal(safeError.numeric_code,1008);
+assert.equal(safeError.category,'rate_limited');
+assert.equal(safeError.raw_error_retained,false);
+assert.equal(JSON.stringify(safeError).includes('secret_example'),false);
+assert.equal(summarizeCmcMcpFailure({isError:true,content:[]}).category,'unclassified_upstream_error');
+
+console.log('learning-cmc-public-quotes-selftest: ok');

@@ -1,0 +1,158 @@
+name: Learning Engine CI
+
+on:
+  push:
+    branches:
+      - feature/learning-engine-v0.1
+      - feature/learning-engine-v0.2
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Syntax checks
+        run: npm run check
+
+      - name: Sprint 1 learning self-test
+        run: npm run learning:selftest
+
+      - name: Sprint 2 learning self-test
+        run: npm run learning:sprint2:selftest
+
+      - name: Sprint 3 learning self-test
+        run: npm run learning:sprint3:selftest
+
+      - name: Sprint 4 learning self-test
+        run: npm run learning:sprint4:selftest
+
+      - name: Sprint 5 learning self-test
+        run: npm run learning:sprint5:selftest
+
+      - name: Shadow v0.2 deterministic self-test
+        run: npm run learning:v2:selftest
+
+      - name: Quote parser and venue gate regression self-test
+        run: npm run learning:quotes:selftest
+
+      - name: CMC official public API fallback regression
+        run: npm run learning:cmc:public:selftest
+
+      - name: CoinPaprika free-source fallback regression
+        run: npm run learning:paprika:selftest
+
+      - name: Event noise audit self-test
+        run: npm run learning:event:audit:selftest
+
+      - name: Safe research gate and OOS self-test
+        run: npm run learning:safe:research:selftest
+
+      - name: CMC skills source circuit and router self-test
+        run: npm run learning:skills:selftest
+
+      - name: Node Brotli CVE runtime-security regression self-test
+        run: npm run learning:node:security:selftest
+
+      - name: CMC keyless v3 versus v2 response-shape diagnostic (read-only)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: node scripts/learning-cmc-shape-live-probe.mjs
+
+      - name: Live CoinPaprika source canary (read-only, no key)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: node scripts/learning-coinpaprika-live-smoke.mjs
+
+      - name: Signed outcome diagnostic self-test
+        run: npm run learning:v02:direction:selftest
+
+      - name: GEO primary-source scanner self-test
+        run: npm run learning:geo:selftest
+
+      - name: GEO v0.2 calendar and outcome self-test
+        run: npm run learning:geo:v02:selftest
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: learning_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d learning_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/learning_test
+      PGSSL: disable
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Bootstrap and migrate learning schema
+        run: npm run learning:migrate
+
+      - name: Re-run migrations idempotently
+        run: npm run learning:migrate
+
+      - name: Shadow configuration preflight
+        run: npm run learning:config:check
+
+      - name: Mock reasoning provider canary
+        run: npm run learning:provider:canary
+        env:
+          LEARNING_CANARY_PROVIDER: mock
+
+      - name: End-to-end shadow dry run
+        run: npm run learning:shadow:dryrun
+
+      - name: Shadow v0.2 replay smoke
+        run: npm run learning:v2:replay
+        env:
+          LEARNING_V2_REPLAY_HOURS: 72
+
+      - name: PostgreSQL integration self-test
+        run: npm run learning:db:selftest
+
+      - name: Runtime health check
+        run: npm run learning:health
+
+      - name: Shadow go-live readiness gate
+        run: npm run learning:readiness
+
+      - name: Retention/storage report
+        run: npm run learning:retention:report

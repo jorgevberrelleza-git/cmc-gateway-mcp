@@ -1,4 +1,5 @@
 import { collectBitsoRaw } from './bitso-client.mjs';
+import { extractLearningFeatures } from './learning/features.mjs';
 
 function num(v) {
   const n = Number(String(v ?? '').replaceAll(',', '').replaceAll('%', '').trim());
@@ -17,21 +18,60 @@ function median(values) {
   return a.length % 2 ? a[i] : (a[i-1] + a[i]) / 2;
 }
 function parsePayload(result) {
-  if (result?.structuredContent != null) return result.structuredContent;
+  const structured = result?.structuredContent ?? null;
+  let parsedText = null;
   for (const block of result?.content || []) {
     if (block?.type !== 'text') continue;
-    try { return JSON.parse(block.text); } catch {}
+    try { parsedText = JSON.parse(block.text); break; } catch {}
   }
-  return null;
+  if (structured != null && parsedText != null) {
+    return { structuredContent: structured, content_json: parsedText };
+  }
+  if (structured != null) return structured;
+  return parsedText;
 }
-function quoteRows(quotes) {
-  const p = parsePayload(quotes);
+function flattenQuoteAsset(asset) {
+  if (!asset || typeof asset !== 'object') return null;
+  const quoteRaw = asset.quote;
+  let usd = null;
+  if (Array.isArray(quoteRaw)) {
+    usd = quoteRaw.find(q => String(q?.symbol || q?.convert_symbol || '').toUpperCase() === 'USD') || quoteRaw[0] || null;
+  } else if (quoteRaw && typeof quoteRaw === 'object') {
+    usd = quoteRaw.USD || quoteRaw.usd || Object.values(quoteRaw)[0] || null;
+  }
+  return {
+    ...asset,
+    ...(usd && typeof usd === 'object' ? usd : {}),
+    symbol: asset.symbol ?? usd?.symbol ?? null,
+    quote_symbol: usd?.symbol ?? null
+  };
+}
+
+function normalizeQuoteRowsPayload(p) {
   if (!p) return [];
-  if (Array.isArray(p)) return p;
+  if (Array.isArray(p)) return p.map(flattenQuoteAsset).filter(Boolean);
+
   if (Array.isArray(p.rows) && Array.isArray(p.headers)) {
-    return p.rows.map(row => Object.fromEntries(p.headers.map((h,i) => [h,row[i]])));
+    return p.rows.map(row => Object.fromEntries(p.headers.map((h, i) => [h, row?.[i]])));
+  }
+
+  if (p.data != null) {
+    const records = Array.isArray(p.data)
+      ? p.data
+      : (typeof p.data === 'object' ? Object.values(p.data) : []);
+    const out = records.map(flattenQuoteAsset).filter(Boolean);
+    if (out.length) return out;
+  }
+
+  if (p.result != null) return normalizeQuoteRowsPayload(p.result);
+  if (p.symbol || p.quote) {
+    const single = flattenQuoteAsset(p);
+    return single ? [single] : [];
   }
   return [];
+}
+function quoteRows(quotes) {
+  return normalizeQuoteRowsPayload(parsePayload(quotes));
 }
 function technicalObject(result) { return parsePayload(result) || {}; }
 function globalObject(result) { return parsePayload(result) || {}; }
@@ -417,15 +457,26 @@ function computeSpotConfirmation(depth, wsSummary, recent, wallPressure) {
 }
 
 function venuePriceCheck(symbol, minor, depth, quotes) {
-  const q=getQuoteFor(symbol,quotes)||{};
-  const cmc=num(q?.price), mid=num(depth?.mid);
-  if(cmc==null||mid==null) return {available:false,reason:'missing_price'};
+  const symbolKey=String(symbol||'').toUpperCase();
+  // Use the SAME quote extractor that powers data-consistency. Other code paths
+  // previously treated missing/blank CMC prices as 0 and created false basis
+  // or an unavailable comparison presented as if it were a checked comparison.
+  const parsed=extractLearningFeatures({assets:[symbolKey],quotes});
+  const upstreamPrice=parsed.assets?.[symbolKey]?.price_usd;
+  const cmc=Number(upstreamPrice);
+  const mid=Number(depth?.mid);
+  const quoteSource=String(quotes?.quote_source || 'cmc_mcp');
+  if (upstreamPrice==null || !(cmc>0) || !Number.isFinite(cmc))
+    return {available:false,reason:'missing_positive_global_usd_price',quote_source:quoteSource,material_mismatch:null};
+  if (depth?.mid==null || !(mid>0) || !Number.isFinite(mid))
+    return {available:false,reason:'missing_positive_venue_mid',quote_source:quoteSource,material_mismatch:null};
   if(!['usd','usdc','usdt'].includes(String(minor||'').toLowerCase())) {
-    return {available:false,reason:`book_minor_${minor||'unknown'}_requires_fx_conversion`};
+    return {available:false,reason:`book_minor_${minor||'unknown'}_requires_fx_conversion`,quote_source:quoteSource,material_mismatch:null};
   }
   const basis=((mid-cmc)/cmc)*10000;
   return {
     available:true,
+    quote_source:quoteSource,
     cmc_usd_price:round(cmc,8),
     bitso_mid:round(mid,8),
     basis_bps:round(basis,2),

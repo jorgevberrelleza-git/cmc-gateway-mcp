@@ -98,9 +98,14 @@ export async function callCmcTool(name, args = {}) {
   try {
     return await withTimeout(client.callTool({ name, arguments: args }));
   } catch (error) {
-    // Reconnect once for transport/session failures. Do not blindly retry a
-    // successful MCP error response (for example an upstream rate-limit body).
+    // MCP tool errors can throw (rather than returning isError); retrying
+    // quota/auth/schema failures immediately makes quota pressure worse.
+    const m=String(error?.message||'').toLowerCase();
+    const nonRetryable=/429|1008|rate.limit|quota|401|403|auth|forbidden|unknown tool|not found|invalid.argument|validation|schema|entitlement/.test(m);
+    const transient=/timeout|timed out|econnreset|econnrefused|socket|transport|session|network|fetch failed|disconnected/.test(m);
+    if(nonRetryable || !transient) throw error;
     await resetClient();
+    await rateLimit(); // reconnect is a second upstream call, not a free attempt.
     client = await getClient();
     return await withTimeout(client.callTool({ name, arguments: args }));
   }
