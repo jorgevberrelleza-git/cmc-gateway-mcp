@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { validateShadowRuntimeConfig } from '../src/learning/runtime-config.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
+import { assessNodeRuntimeSecurity } from '../src/learning/node-runtime-security.mjs';
 
 const config = validateShadowRuntimeConfig(process.env);
 if (!config.ready_for_shadow) {
@@ -228,6 +229,7 @@ console.log(JSON.stringify({
   completed_at: cycleCompleted.toISOString(),
   duration_ms: cycleCompleted.getTime() - cycleStarted.getTime(),
   config_warnings: config.warnings,
+  node_runtime_security: assessNodeRuntimeSecurity(process.version),
   telemetry_saved: telemetrySaved,
   telemetry_error: telemetryError,
   steps: results,
