@@ -67,6 +67,9 @@ jobs:
       - name: CMC skills source circuit and router self-test
         run: npm run learning:skills:selftest
 
+      - name: Node Brotli CVE runtime-security regression self-test
+        run: npm run learning:node:security:selftest
+
       - name: CMC keyless v3 versus v2 response-shape diagnostic (read-only)
         if: github.event_name == 'push'
         continue-on-error: true
