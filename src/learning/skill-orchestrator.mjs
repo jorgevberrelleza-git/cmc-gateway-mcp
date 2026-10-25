@@ -19,6 +19,10 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
   const attempts=recent.filter(r=>r.payload?.quote_provenance?.mcp_probe_attempted!==false);
   const primaryFailures=attempts.filter(r=>r.payload?.quote_provenance?.mcp_failure_class);
   const backupUsage=recent.filter(r=>r.payload?.quote_provenance?.source==='coinpaprika_public');
+  // Observability only: a REST HTTP 429 must never be counted as healthy CMC coverage.
+  const cmcRest429=recent.filter(r=>r.payload?.quote_provenance?.public_fallback_error_class==='cmc_public_http_429');
+  const cmcRestAttempts=recent.filter(r=>r.payload?.quote_provenance?.public_fallback_attempted===true);
+  const cmcRestSuccess=recent.filter(r=>r.payload?.quote_provenance?.source==='cmc_public_v3_keyless');
   const material=recent.filter(r=>r.material_event?.material===true);
   const candidates=material.filter(r=>assessEventQuality(r.material_event).research_candidate);
   const context=material.length-candidates.length;
@@ -42,6 +46,13 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
       action:'recheck_mcp_only_on_circuit_recovery_probe; preserve_existing_cmc_rest_and_paprika_routes',
       observed_failures:primaryFailures.length,
       status:'automatic_safe_source_selection'});
+  }
+  if(cmcRest429.length>0){
+    priorities.push({id:'cmc_rest_rate_limit_audit',priority:cmcRest429.length>=2?110:88,
+      workflow:'cmc_crypto_data',
+      action:'audit_observed_429_frequency_and_existing_fallback_only; no_extra_retries_or_new_paid_api_calls',
+      observed_http_429_runs:cmcRest429.length,
+      status:'research_only_no_rate_limit_policy_change'});
   }
   if(!macroVerified){
     priorities.push({id:'macro_attestation',priority:90,
@@ -77,7 +88,9 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
     source_catalog:CMC_SKILL_CATALOG.map(x=>({id:x.id,kind:x.kind,needs_cmc_pro_key:!!x.needs_cmc_pro_key,needs_working_mcp:!!x.needs_working_mcp})),
     sample:{snapshots:chronological.length,recent_24h:recent.length,
       primary_mcp_failures:primaryFailures.length,primary_attempts:attempts.length,
-      coinpaprika_fallback_runs:backupUsage.length,material_events:material.length,
+      coinpaprika_fallback_runs:backupUsage.length,cmc_public_http_429_runs:cmcRest429.length,
+      cmc_rest_attempt_runs:cmcRestAttempts.length,cmc_rest_success_runs:cmcRestSuccess.length,
+      material_events:material.length,
       high_evidence_research_events:candidates.length,context_only:context,
       venue_comparison_available:venueCoverage,walkforward:sample},
     highest_priority:priorities[0]||null,
