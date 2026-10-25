@@ -37,4 +37,33 @@ assert.equal(report.paid_ai_calls_made,0);
 assert.equal(report.execution_enabled,false);
 assert.equal(report.automatic_real_money_orders_allowed,false);
 assert.ok(report.next_workflows.find(x=>x.id==='macro_attestation'));
+assert.equal(report.sample.cmc_public_http_429_runs,0);
+assert.equal(report.sample.cmc_rest_attempt_runs,0);
+assert.equal(report.sample.cmc_rest_success_runs,0);
+assert.equal(report.next_workflows.some(x=>x.id==='cmc_rest_rate_limit_audit'),false);
+
+// Regression: repeated CMC REST HTTP 429 must be visible without changing fallback or trading.
+const rateLimit={source:'coinpaprika_public',mcp_probe_attempted:true,
+  mcp_failure_class:'unclassified_upstream_error',public_fallback_attempted:true,
+  public_fallback_error_class:'cmc_public_http_429',coinpaprika_fallback_attempted:true};
+const recovered={source:'cmc_public_v3_keyless',mcp_probe_attempted:false,
+  public_fallback_attempted:true,public_fallback_error_class:null};
+const rateReport=planShadowSkillWork([
+ r(0,rateLimit),r(1,rateLimit),r(2,recovered)
+],{now:new Date('2026-10-22T03:00:00Z')});
+assert.equal(rateReport.sample.cmc_public_http_429_runs,2);
+assert.equal(rateReport.sample.cmc_rest_attempt_runs,3);
+assert.equal(rateReport.sample.cmc_rest_success_runs,1);
+assert.equal(rateReport.sample.coinpaprika_fallback_runs,2);
+assert.equal(rateReport.highest_priority.id,'cmc_rest_rate_limit_audit');
+assert.equal(rateReport.highest_priority.observed_http_429_runs,2);
+assert.equal(rateReport.external_calls_made,0);
+assert.equal(rateReport.paid_ai_calls_made,0);
+assert.equal(rateReport.execution_enabled,false);
+assert.equal(rateReport.automatic_real_money_orders_allowed,false);
+const isolated=planShadowSkillWork([r(0,rateLimit),r(1,recovered)],
+ {now:new Date('2026-10-22T02:00:00Z')});
+assert.equal(isolated.sample.cmc_public_http_429_runs,1);
+assert.equal(isolated.next_workflows.some(x=>x.id==='cmc_rest_rate_limit_audit'),true);
+assert.equal(isolated.highest_priority.id,'macro_attestation');
 console.log('learning-skills-selftest: ok');
