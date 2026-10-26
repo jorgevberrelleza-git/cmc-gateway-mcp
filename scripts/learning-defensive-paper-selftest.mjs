@@ -54,6 +54,9 @@ assert.equal(report.no_lookahead_signal_and_execution_separated,true);
 assert.equal(report.execution_enabled,false);
 assert.equal(report.external_calls_made,0);
 assert.equal(report.paid_ai_calls_made,0);
-assert.equal(report.scenarios.dynamic.oos_sample_sufficient,false,
-  'OOS evidence must be insufficient at <20 four-hour observations');
+assert.equal(report.scenarios.dynamic.oos_sample_sufficient,true,
+  '24 four-hour observations clear only the basic minimum sample gate');
+const sparse=evaluateDefensivePortfolio(rows.slice(0,40));
+assert.equal(sparse.scenarios.dynamic.oos_sample_sufficient,false,
+  'OOS evidence must be insufficient at fewer than 20 four-hour observations');
 console.log('learning-defensive-paper-selftest: ok');
