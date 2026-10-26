@@ -40,6 +40,19 @@ async function withTimeout(promise, ms = TIMEOUT_MS) {
   }
 }
 
+// Record the failing MCP protocol stage without ever logging API credentials,
+// request headers, upstream response bodies or exception messages.
+function tagMcpError(error,phase) {
+  if(error&&typeof error==='object'&&!error.cmc_stage){
+    try{Object.defineProperty(error,'cmc_stage',{value:phase,enumerable:false});}catch{}
+  }
+  return error;
+}
+async function mcpStage(phase,fn){
+  try{return await fn();}
+  catch(error){throw tagMcpError(error,phase);}
+}
+
 let upstreamClientPromise = null;
 
 async function createConnectedClient() {
@@ -56,10 +69,16 @@ async function createConnectedClient() {
     }
   });
 
-  await withTimeout(client.connect(transport));
-  // Discover once per upstream session instead of once per tool call.
-  await withTimeout(client.listTools());
-  return client;
+  try {
+    await mcpStage('initialize',()=>withTimeout(client.connect(transport)));
+    // Discover only once per upstream session; distinguish this step from
+    // authentication/initialization failures without persisting raw messages.
+    await mcpStage('list_tools',()=>withTimeout(client.listTools()));
+    return client;
+  } catch(error){
+    await client.close().catch(()=>{});
+    throw error;
+  }
 }
 
 async function getClient() {
@@ -85,7 +104,7 @@ export async function listUpstreamTools() {
   await rateLimit();
   const client = await getClient();
   try {
-    return await withTimeout(client.listTools());
+    return await mcpStage('list_tools',()=>withTimeout(client.listTools()));
   } catch (error) {
     await resetClient();
     throw error;
@@ -96,7 +115,7 @@ export async function callCmcTool(name, args = {}) {
   await rateLimit();
   let client = await getClient();
   try {
-    return await withTimeout(client.callTool({ name, arguments: args }));
+    return await mcpStage('call_tool',()=>withTimeout(client.callTool({ name, arguments: args })));
   } catch (error) {
     // MCP tool errors can throw (rather than returning isError); retrying
     // quota/auth/schema failures immediately makes quota pressure worse.
