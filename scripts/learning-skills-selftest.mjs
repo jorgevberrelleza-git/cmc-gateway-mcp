@@ -66,4 +66,35 @@ const isolated=planShadowSkillWork([r(0,rateLimit),r(1,recovered)],
 assert.equal(isolated.sample.cmc_public_http_429_runs,1);
 assert.equal(isolated.next_workflows.some(x=>x.id==='cmc_rest_rate_limit_audit'),true);
 assert.equal(isolated.highest_priority.id,'macro_attestation');
+// Regression: distinguish a material 429 rate spike from an isolated outage
+// using only pre-existing hourly snapshots. No requests, trades or paid AI.
+const hourlyHistory=Array.from({length:48},(_,h)=>
+  r(h,(h===0||(h>=24&&h<=29))?rateLimit:recovered));
+const spike=planShadowSkillWork(hourlyHistory,{
+  now:new Date('2026-10-23T23:00:00Z')
+});
+assert.equal(spike.sample.cmc_public_http_429_runs,6);
+assert.equal(spike.sample.cmc_rest_attempt_runs,24);
+assert.equal(spike.sample.cmc_public_http_429_rate_pct,25);
+assert.equal(spike.sample.cmc_public_http_429_previous_24h_runs,1);
+assert.equal(spike.sample.cmc_public_http_429_previous_24h_rate_pct,4.2);
+assert.equal(spike.sample.cmc_rest_rate_limit_spike,true);
+assert.equal(spike.highest_priority.id,'cmc_rest_rate_limit_audit');
+assert.equal(spike.highest_priority.priority,120);
+assert.equal(spike.highest_priority.rate_limit_spike,true);
+assert.equal(spike.external_calls_made,0);
+assert.equal(spike.paid_ai_calls_made,0);
+assert.equal(spike.execution_enabled,false);
+assert.equal(spike.automatic_real_money_orders_allowed,false);
+const stable=planShadowSkillWork(
+ Array.from({length:48},(_,h)=>r(h,(h===0||h===24)?rateLimit:recovered)),
+ {now:new Date('2026-10-23T23:00:00Z')}
+);
+assert.equal(stable.sample.cmc_rest_rate_limit_spike,false);
+const shortBaseline=planShadowSkillWork(hourlyHistory.slice(20),{
+ now:new Date('2026-10-23T23:00:00Z')
+});
+assert.equal(shortBaseline.sample.cmc_public_http_429_runs,6);
+assert.equal(shortBaseline.sample.cmc_rest_rate_limit_spike,false);
+
 console.log('learning-skills-selftest: ok');
