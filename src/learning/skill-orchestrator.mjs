@@ -15,7 +15,9 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
     .filter(x=>x?.payload && Number.isFinite(Date.parse(x.generated_at)))
     .sort((a,b)=>Date.parse(a.generated_at)-Date.parse(b.generated_at));
   const latest=chronological.at(-1)||null;
-  const recent=chronological.filter(r=>Date.parse(r.generated_at)>+new Date(now)-24*3600000);
+  const nowMs=+new Date(now);
+  const recent=chronological.filter(r=>Date.parse(r.generated_at)>nowMs-24*3600000&&Date.parse(r.generated_at)<=nowMs);
+  const previous24h=chronological.filter(r=>Date.parse(r.generated_at)>nowMs-48*3600000&&Date.parse(r.generated_at)<=nowMs-24*3600000);
   const attempts=recent.filter(r=>r.payload?.quote_provenance?.mcp_probe_attempted!==false);
   const primaryFailures=attempts.filter(r=>r.payload?.quote_provenance?.mcp_failure_class);
   const backupUsage=recent.filter(r=>r.payload?.quote_provenance?.source==='coinpaprika_public');
@@ -23,6 +25,15 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
   const cmcRest429=recent.filter(r=>r.payload?.quote_provenance?.public_fallback_error_class==='cmc_public_http_429');
   const cmcRestAttempts=recent.filter(r=>r.payload?.quote_provenance?.public_fallback_attempted===true);
   const cmcRestSuccess=recent.filter(r=>r.payload?.quote_provenance?.source==='cmc_public_v3_keyless');
+  const previous429=previous24h.filter(r=>r.payload?.quote_provenance?.public_fallback_error_class==='cmc_public_http_429');
+  const previousRestAttempts=previous24h.filter(r=>r.payload?.quote_provenance?.public_fallback_attempted===true);
+  const rate429=cmcRestAttempts.length?Number((100*cmcRest429.length/cmcRestAttempts.length).toFixed(1)):null;
+  const previousRate429=previousRestAttempts.length?Number((100*previous429.length/previousRestAttempts.length).toFixed(1)):null;
+  // Observational spike only: requires two sufficiently sampled windows.
+  // This never changes the CMC request schedule, source routing, or risk parameters.
+  const rateLimitSpike=recent.length>=12&&previous24h.length>=12
+    &&cmcRestAttempts.length>=12&&previousRestAttempts.length>=12
+    &&cmcRest429.length>=4&&rate429>=20&&rate429>=previousRate429+10;
   const material=recent.filter(r=>r.material_event?.material===true);
   const candidates=material.filter(r=>assessEventQuality(r.material_event).research_candidate);
   const context=material.length-candidates.length;
@@ -48,11 +59,15 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
       status:'automatic_safe_source_selection'});
   }
   if(cmcRest429.length>0){
-    priorities.push({id:'cmc_rest_rate_limit_audit',priority:cmcRest429.length>=2?110:88,
+    priorities.push({id:'cmc_rest_rate_limit_audit',priority:rateLimitSpike?120:cmcRest429.length>=2?110:88,
       workflow:'cmc_crypto_data',
       action:'audit_observed_429_frequency_and_existing_fallback_only; no_extra_retries_or_new_paid_api_calls',
       observed_http_429_runs:cmcRest429.length,
-      status:'research_only_no_rate_limit_policy_change'});
+      observed_http_429_rate_pct:rate429,
+      previous_24h_http_429_runs:previous429.length,
+      previous_24h_http_429_rate_pct:previousRate429,
+      rate_limit_spike:rateLimitSpike,
+      status:rateLimitSpike?'research_only_spike_detected_no_source_policy_change':'research_only_no_rate_limit_policy_change'});
   }
   if(!macroVerified){
     priorities.push({id:'macro_attestation',priority:90,
@@ -90,6 +105,10 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
       primary_mcp_failures:primaryFailures.length,primary_attempts:attempts.length,
       coinpaprika_fallback_runs:backupUsage.length,cmc_public_http_429_runs:cmcRest429.length,
       cmc_rest_attempt_runs:cmcRestAttempts.length,cmc_rest_success_runs:cmcRestSuccess.length,
+      cmc_public_http_429_rate_pct:rate429,
+      cmc_public_http_429_previous_24h_runs:previous429.length,
+      cmc_public_http_429_previous_24h_rate_pct:previousRate429,
+      cmc_rest_rate_limit_spike:rateLimitSpike,
       material_events:material.length,
       high_evidence_research_events:candidates.length,context_only:context,
       venue_comparison_available:venueCoverage,walkforward:sample},
