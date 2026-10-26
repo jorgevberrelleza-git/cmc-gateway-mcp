@@ -69,6 +69,7 @@ export function simulateDefensiveAsset(rows=[],asset='BTC',mode='partial',
   let quantity=mode==='cash'?0:initial/p0;
   let cash=mode==='cash'?initial:0;
   let lastRebalance=-Infinity,turnover=0,trades=0,costs=0,gaps=0;
+  let lastTarget=mode==='cash'?0:1;
   const timeline=[{time:grid[0].generated_at,value_usd:initial}];
   const tradeLog=[];
   const costRate=(policy.roundtrip_fee_slippage_bps+policy.assumed_full_spread_bps)/20000;
@@ -79,6 +80,9 @@ export function simulateDefensiveAsset(rows=[],asset='BTC',mode='partial',
     let target=targetDefensiveExposure(grid[i].payload,asset,mode);
     if(h>policy.max_execution_delay_hours){gaps++;target=null;}
     if(tradeTime-lastRebalance<policy.min_rebalance_gap_hours*3600000)target=null;
+    // Switch allocation only on regime changes. Rebalancing continuously to
+    // the same percentage overtrades a downtrend and fabricates unnecessary fees.
+    if(target!=null&&Math.abs(target-lastTarget)<1e-9)target=null;
     if(target!=null){
       const total=cash+quantity*px;
       const targetNotional=total*target;
@@ -93,6 +97,7 @@ export function simulateDefensiveAsset(rows=[],asset='BTC',mode='partial',
         if(cash<0&&cash>-1e-7)cash=0;
         if(cash < -1e-7||quantity < -1e-10)throw Error('defensive_no_leverage_invariant');
         turnover+=notional;costs+=cost;trades++;lastRebalance=tradeTime;
+        lastTarget=target;
         tradeLog.push({signal_at:grid[i].generated_at,executed_at:grid[i+1].generated_at,
           side:dQty>0?'paper_buy':'paper_reduce',cost_usd:round(cost,5),
           notional_usd:round(notional,4),target_weight:target});
