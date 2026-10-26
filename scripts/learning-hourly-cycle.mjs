@@ -206,6 +206,23 @@ if(String(process.env.LEARNING_SKILLS_DAILY_ENABLED||'false').toLowerCase()==='t
   };
 }
 
+// Research-only capital preservation comparison. Runs once daily using
+// already saved snapshots, NOT the production portfolio ledger.
+let defensiveResearch=null;
+if(String(process.env.LEARNING_DEFENSIVE_REPORT_ENABLED||'false').toLowerCase()==='true'
+  && cycleStarted.getUTCHours()===3 && collectorOk) {
+  const run=spawnSync('npm',['run','learning:defensive:paper:report'],{
+    encoding:'utf8',env:process.env,timeout:25000,maxBuffer:1024*1024
+  });
+  const line=String(run.stdout||'').split(/\r?\n/).find(x=>x.startsWith('SHADOW_DEFENSIVE_RESEARCH='))||null;
+  defensiveResearch={
+    attempted:true,ok:run.status===0&&Boolean(line),status:run.status,
+    compact_summary:line?line.slice(0,14000):null,
+    stderr_tail:String(run.stderr||'').trim().slice(-700),
+    external_calls_made:0,paid_ai_calls_made:0,execution_enabled:false
+  };
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
@@ -240,6 +257,7 @@ console.log(JSON.stringify({
   event_noise_audit: eventNoiseAudit,
   walkforward_report: walkforwardReport,
   skills_daily: skillsDaily,
+  defensive_research: defensiveResearch,
   execution_enabled: false
 }, null, 2));
 if (!ok) process.exitCode = 1;
