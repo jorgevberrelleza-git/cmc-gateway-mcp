@@ -146,7 +146,7 @@ export async function buildMarketReport() {
       try {
         return [key, await pass(tool, args)];
       } catch (error) {
-        return [key, { isError: true, error: error?.message || String(error) }];
+        return [key, { isError: true, error: summarizeCmcThrownError(error).category, diagnostics: summarizeCmcThrownError(error) }];
       }
     })
   );
@@ -181,7 +181,7 @@ export async function buildAssetResearch(query, newsLimit = 5) {
     try {
       entries.push([key, await pass(tool, args)]);
     } catch (error) {
-      entries.push([key, { isError: true, error: error?.message || String(error) }]);
+      entries.push([key, { isError: true, error: summarizeCmcThrownError(error).category, diagnostics: summarizeCmcThrownError(error) }]);
     }
   }
 
