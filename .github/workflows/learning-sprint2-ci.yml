@@ -67,6 +67,12 @@ jobs:
       - name: CMC skills source circuit and router self-test
         run: npm run learning:skills:selftest
 
+      - name: CMC upstream stage-specific diagnostics
+        run: npm run learning:cmc:diagnostics:selftest
+
+      - name: Defensive paper model no-lookahead regression
+        run: npm run learning:defensive:paper:selftest
+
       - name: Node Brotli CVE runtime-security regression self-test
         run: npm run learning:node:security:selftest
 
