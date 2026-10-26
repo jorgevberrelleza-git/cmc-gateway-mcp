@@ -59,16 +59,38 @@ export function summarizeCmcMcpFailure(result) {
 }
 
 export function summarizeCmcThrownError(error) {
+  // Only allowlisted machine diagnostics may be saved. In particular, never
+  // serialize error.message, cause.message, headers, response bodies or URLs.
+  const safeStages=new Set(['initialize','list_tools','call_tool','unknown']);
+  const stage=safeStages.has(error?.cmc_stage)?error.cmc_stage:'unknown';
+  const root=error?.cause&&typeof error.cause==='object'?error.cause:null;
   const name=String(error?.name||'');
-  const message=String(error?.message||'').slice(0,1500);
-  const candidate=error?.code ?? error?.statusCode ?? error?.status ?? error?.response?.status ?? null;
-  const code=(typeof candidate==='number'||typeof candidate==='string') ? Number(candidate) : NaN;
+  const codeCandidate=error?.code??error?.statusCode??error?.status??error?.response?.status
+    ??root?.code??root?.statusCode??root?.status??root?.response?.status??null;
+  const code=typeof codeCandidate==='number'||typeof codeCandidate==='string'?Number(codeCandidate):NaN;
   const numeric=Number.isInteger(code)&&code>=-32768&&code<=100000?code:null;
-  const category=classifyCmcQuoteFailure(message+' '+(numeric==null?'':numeric));
+  const statusCandidate=error?.statusCode??error?.status??error?.response?.status
+    ??root?.statusCode??root?.status??root?.response?.status;
+  const statusNumber=Number(statusCandidate);
+  const httpStatus=Number.isInteger(statusNumber)&&statusNumber>=400&&statusNumber<=599?statusNumber:null;
+  const safeNetworkCodes=new Set(['ECONNRESET','ECONNREFUSED','ETIMEDOUT','ENOTFOUND','EAI_AGAIN','UND_ERR_CONNECT_TIMEOUT']);
+  const networkCode=[error?.code,root?.code].find(v=>safeNetworkCodes.has(v))||null;
+  const rootName=String(root?.name||'');
+  const safeName=v=>['McpError','TimeoutError','AbortError','TypeError','Error','ResponseError'].includes(v)?v:'other';
+  const observedMessage=String(error?.message||'').slice(0,1500);
+  const category=classifyCmcQuoteFailure([
+    observedMessage,String(root?.message||'').slice(0,500),
+    numeric==null?'':String(numeric),httpStatus==null?'':String(httpStatus),
+    networkCode||''
+  ].filter(Boolean).join(' '));
   return {
     category,
     numeric_code:numeric,
-    exception_type:['McpError','TimeoutError','AbortError','TypeError','Error'].includes(name)?name:'other',
+    http_status:httpStatus,
+    network_code:networkCode,
+    phase:stage,
+    exception_type:safeName(name),
+    cause_type:root?safeName(rootName):null,
     thrown_error:true,
     raw_error_retained:false
   };
