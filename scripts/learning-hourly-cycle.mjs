@@ -223,6 +223,26 @@ if(String(process.env.LEARNING_DEFENSIVE_REPORT_ENABLED||'false').toLowerCase()=
   };
 }
 
+// Immutable forward-only research tape: each hourly snapshot is evaluated
+// exactly once, with only the prior already-observed snapshot. No positions,
+// paper orders, accounts, remote APIs or paid reasoning are accessed.
+let forwardRulesV03=null;
+if(String(process.env.LEARNING_RULES_V03_FORWARD_ENABLED||'false').toLowerCase()==='true'
+   && collectorOk) {
+ const run=spawnSync('npm',['run','learning:rules:v03:forward'],{
+   encoding:'utf8',env:process.env,timeout:20000,maxBuffer:1024*1024
+ });
+ const line=String(run.stdout||'').split(/\r?\n/)
+   .find(x=>x.startsWith('SHADOW_RULES_FORWARD='))||null;
+ forwardRulesV03={
+   attempted:true,ok:run.status===0&&Boolean(line),status:run.status,
+   summary:line?line.slice(0,8500):null,
+   stderr_tail:String(run.stderr||'').trim().slice(-650),
+   orders_created:0,external_calls_made:0,paid_ai_calls_made:0,
+   execution_enabled:false
+ };
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
@@ -258,6 +278,7 @@ console.log(JSON.stringify({
   walkforward_report: walkforwardReport,
   skills_daily: skillsDaily,
   defensive_research: defensiveResearch,
+  forward_rules_v03: forwardRulesV03,
   execution_enabled: false
 }, null, 2));
 if (!ok) process.exitCode = 1;
