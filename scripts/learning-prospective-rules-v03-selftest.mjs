@@ -6,7 +6,7 @@ function snap(i,{spot=20,trap=80,confidence=80,day=-4,week=-6,
   source='coinpaprika_public',venue=true,adaVenue=true,aaveVenue=false,
   confirm='contradicts',quality=8,price=100}={}){
  const assets=['BTC','ADA','AAVE'];
- const micro=Object.fromEntries(assets.map(a=>[a,{available:true,
+ const micro=Object.fromEntries(assets.map(a=>[a,{available:a==='AAVE'?aaveVenue:true,
   venue_price_check:{available:a==='AAVE'?aaveVenue:(a==='ADA'?adaVenue:venue),material_mismatch:false},
   scores:{spot_confirmation_0_100:spot,trap_risk_0_100:trap,
    microstructure_confidence_0_100:confidence}}]));
