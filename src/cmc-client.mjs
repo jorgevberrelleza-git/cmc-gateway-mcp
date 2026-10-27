@@ -6,6 +6,11 @@ const TIMEOUT_MS = Number(process.env.CMC_TIMEOUT_MS || 20000);
 // The public CMC MCP currently behaves like a ~10 tool-call/minute service on the free tier.
 // Stay one call below that observed ceiling so snapshots do not burst into 1008 errors.
 const MAX_PER_MINUTE = Math.max(1, Number(process.env.CMC_MAX_CALLS_PER_MINUTE || 9));
+// Legacy handshake skips SDK v2 server/discover probe. Keep auto available
+// for servers that support the new MCP protocol, with rollback via environment.
+export function cmcMcpProtocolMode(env = process.env) {
+  return String(env.CMC_MCP_PROTOCOL_MODE || 'auto').trim().toLowerCase()==='legacy' ? 'legacy' : 'auto';
+}
 
 if (!API_KEY) {
   throw new Error('CMC_MCP_API_KEY is required. Put it in the deployment environment, never in source code.');
@@ -58,7 +63,7 @@ let upstreamClientPromise = null;
 async function createConnectedClient() {
   const client = new Client(
     { name: 'cmc-gateway-upstream', version: '0.3.2' },
-    { versionNegotiation: { mode: 'auto' } }
+    { versionNegotiation: { mode: cmcMcpProtocolMode() } }
   );
 
   const transport = new StreamableHTTPClientTransport(new URL(CMC_URL), {
