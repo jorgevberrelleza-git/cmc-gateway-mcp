@@ -73,10 +73,12 @@ export function summarizeCmcThrownError(error) {
     ??root?.statusCode??root?.status??root?.response?.status;
   const statusNumber=Number(statusCandidate);
   const httpStatus=Number.isInteger(statusNumber)&&statusNumber>=400&&statusNumber<=599?statusNumber:null;
+  const allowedSdkCodes=new Set(['ERA_NEGOTIATION_FAILED','REQUEST_TIMEOUT','CONNECTION_CLOSED','UNAUTHORIZED','TRANSPORT_ERROR']);
+  const sdkCode=[error?.code,root?.code].find(v=>allowedSdkCodes.has(v))||null;
   const safeNetworkCodes=new Set(['ECONNRESET','ECONNREFUSED','ETIMEDOUT','ENOTFOUND','EAI_AGAIN','UND_ERR_CONNECT_TIMEOUT']);
   const networkCode=[error?.code,root?.code].find(v=>safeNetworkCodes.has(v))||null;
   const rootName=String(root?.name||'');
-  const safeName=v=>['McpError','TimeoutError','AbortError','TypeError','Error','ResponseError'].includes(v)?v:'other';
+  const safeName=v=>['McpError','TimeoutError','AbortError','TypeError','Error','ResponseError','SdkError','UnauthorizedError'].includes(v)?v:'other';
   const observedMessage=String(error?.message||'').slice(0,1500);
   const category=classifyCmcQuoteFailure([
     observedMessage,String(root?.message||'').slice(0,500),
@@ -87,6 +89,7 @@ export function summarizeCmcThrownError(error) {
     category,
     numeric_code:numeric,
     http_status:httpStatus,
+    sdk_error_code:sdkCode,
     network_code:networkCode,
     phase:stage,
     exception_type:safeName(name),
