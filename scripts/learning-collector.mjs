@@ -4,6 +4,7 @@ import { buildDecisionQueueItem } from '../src/learning/decision-queue.mjs';
 import { classifyResearchQueueEvent } from '../src/learning/research-queue-gate.mjs';
 import { createLearningStore } from '../src/learning/storage.mjs';
 import { decideCmcMcpProbe } from '../src/learning/cmc-mcp-circuit.mjs';
+import { decideCmcPublicProbe } from '../src/learning/cmc-public-rate-circuit.mjs';
 
 function parseAssets() {
   return String(process.env.LEARNING_ASSETS || 'BTC,AAVE,ADA')
@@ -18,11 +19,13 @@ const source = process.env.LEARNING_SOURCE || 'cron';
 const store = createLearningStore();
 
 try {
-  const recentRows = await store.recentSnapshots(12);
+  const recentRows = await store.recentSnapshots(36);
   const previousRow = recentRows[0] || null;
   const cmcMcpCircuit = decideCmcMcpProbe(recentRows,{enabled:String(process.env.LEARNING_CMC_MCP_CIRCUIT_ENABLED||'false').toLowerCase()==='true'});
+  const cmcPublicCircuit=decideCmcPublicProbe(recentRows,{enabled:String(process.env.LEARNING_CMC_PUBLIC_RATE_CIRCUIT_ENABLED||'false').toLowerCase()==='true'});
   const snapshot = await buildTradingSnapshot({
     cmcMcpCircuit,
+    cmcPublicCircuit,
     assets: parseAssets(),
     includeMicrostructure: String(process.env.LEARNING_INCLUDE_MICROSTRUCTURE || 'true').toLowerCase() !== 'false',
     captureMs
