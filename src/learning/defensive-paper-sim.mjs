@@ -69,6 +69,8 @@ export function simulateDefensiveAsset(rows=[],asset='BTC',mode='partial',
   let quantity=mode==='cash'?0:initial/p0;
   let cash=mode==='cash'?initial:0;
   let lastRebalance=-Infinity,turnover=0,trades=0,costs=0,gaps=0;
+  let unavailableSignalWindows=0,contradictingFundamentalWindows=0,
+      missingMicrostructureWindows=0;
   let lastTarget=mode==='cash'?0:1;
   const timeline=[{time:grid[0].generated_at,value_usd:initial}];
   const tradeLog=[];
@@ -77,7 +79,17 @@ export function simulateDefensiveAsset(rows=[],asset='BTC',mode='partial',
     const signalTime=ms(grid[i]),tradeTime=ms(grid[i+1]);
     const px=price(grid[i+1],asset);
     const h=(tradeTime-signalTime)/3600000;
+    const f=feature(grid[i],asset);
+    if(['partial','dynamic'].includes(mode)){
+      if(asset==='AAVE' && f?.fundamental_confirmation==='contradicts' &&
+        safe(f?.fundamental_quality)!=null && safe(f.fundamental_quality)<=25)
+          contradictingFundamentalWindows++;
+      if(safe(f?.spot_confirmation)==null||safe(f?.trap_risk)==null||
+         safe(f?.microstructure_confidence)==null||safe(f?.microstructure_confidence)<55)
+          missingMicrostructureWindows++;
+    }
     let target=targetDefensiveExposure(grid[i].payload,asset,mode);
+    if(target==null&&['partial','dynamic'].includes(mode))unavailableSignalWindows++;
     if(h>policy.max_execution_delay_hours){gaps++;target=null;}
     if(tradeTime-lastRebalance<policy.min_rebalance_gap_hours*3600000)target=null;
     // Switch allocation only on regime changes. Rebalancing continuously to
@@ -118,6 +130,10 @@ export function simulateDefensiveAsset(rows=[],asset='BTC',mode='partial',
     excess_vs_hodl_pp:round(pct(final,initial)-pct(hodlFinal,initial)),
     max_drawdown_pct:metricSeries(timeline.map(v=>v.value_usd)),
     trades,turnover_usd:round(turnover,2),estimated_total_cost_usd:round(costs,4),
+    unavailable_signal_windows:unavailableSignalWindows,
+    fundamental_veto_observed_windows:contradictingFundamentalWindows,
+    missing_microstructure_windows:missingMicrostructureWindows,
+    skipped_delayed_execution_windows:gaps,
     final_cash_usd:round(finalCash,4),trade_log:tradeLog,
     policy_predeclared:true,signals_read_at_t_executed_at_t_plus_one:true,
     return_compounded:true,real_order_count:0,paid_ai_calls_made:0,
@@ -159,6 +175,9 @@ export function evaluateDefensivePortfolio(rows=[],{policy=DEFENSIVE_POLICY,now=
    oos_start:outOfSample[0]?.generated_at??null,
    scenarios,policy,
    evidence_gate:'OFFLINE_EXPLORATION_NOT_VALIDATED_FOR_TRADING',
+   evaluation_kind:'retrospective_replay_not_prospective',
+   statistically_actionable:false,
+   forward_test_needed:true,
    no_leverage:true,no_shorts:true,
    no_lookahead_signal_and_execution_separated:true,
    strategy_parameters_not_tuned_to_test:true,
