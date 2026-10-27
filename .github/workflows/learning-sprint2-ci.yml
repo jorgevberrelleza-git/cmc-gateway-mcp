@@ -76,6 +76,9 @@ jobs:
       - name: Defensive paper model no-lookahead regression
         run: npm run learning:defensive:paper:selftest
 
+      - name: Prospectively frozen risk and recovery rule tests
+        run: npm run learning:rules:v03:selftest
+
       - name: Node Brotli CVE runtime-security regression self-test
         run: npm run learning:node:security:selftest
 
@@ -153,6 +156,14 @@ jobs:
         run: npm run learning:v2:replay
         env:
           LEARNING_V2_REPLAY_HOURS: 72
+
+      - name: Save prospective research evaluation (idempotent)
+        run: |
+          npm run learning:rules:v03:forward
+          npm run learning:rules:v03:forward
+
+      - name: Confirm read-only rule evaluation persisted
+        run: npm run learning:rules:v03:db:selftest
 
       - name: PostgreSQL integration self-test
         run: npm run learning:db:selftest
