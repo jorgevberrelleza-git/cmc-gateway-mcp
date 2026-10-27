@@ -41,6 +41,8 @@ assert.deepEqual(simulateDefensiveAsset(changed,'BTC','partial').trade_log[0],
 const missing=rows.map((r,i)=>i===4?snap(i,96,{spot:null,trap:null,confidence:null}):r);
 assert.equal(targetDefensiveExposure(missing[4].payload,'BTC','partial'),null);
 assert.ok(simulateDefensiveAsset(missing,'BTC','partial').final_value_usd>0);
+assert.ok(simulateDefensiveAsset(missing,'BTC','partial').missing_microstructure_windows>0);
+assert.ok(simulateDefensiveAsset(rows,'AAVE','partial').fundamental_veto_observed_windows>0);
 const flat=Array.from({length:24},(_,i)=>snap(i,100,{spot:70,trap:10,gate:'NORMAL_REVIEW',fund:'confirms'}));
 assert.equal(simulateDefensiveAsset(flat,'BTC','partial').trades,0,
   'do not trade if healthy and already fully invested');
@@ -52,6 +54,8 @@ assert.equal(report.scenarios.cash.initial_usd,3000);
 assert.ok(report.scenarios.partial.alpha_vs_hodl_pp>0);
 assert.equal(report.no_lookahead_signal_and_execution_separated,true);
 assert.equal(report.execution_enabled,false);
+assert.equal(report.statistically_actionable,false);
+assert.equal(report.evaluation_kind,'retrospective_replay_not_prospective');
 assert.equal(report.external_calls_made,0);
 assert.equal(report.paid_ai_calls_made,0);
 assert.equal(report.scenarios.dynamic.oos_sample_sufficient,true,
