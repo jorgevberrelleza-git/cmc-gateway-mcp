@@ -31,4 +31,19 @@ assert.equal(decideCmcPublicProbe([row(0,'cmc_public_http_429'),row(1,null),row(
 assert.equal(decideCmcPublicProbe([row(0,'cmc_public_http_429'),row(1,'cmc_public_http_429')],{
  enabled:true,now:new Date(base+20*3600000)}).attempt,true,
  'never disable fallback forever');
+// Regression from production: a 429 from t=0 falls outside the rolling
+// 6-hour lookback at t=7, but a new 429 at t=5.5 must still cause a 3h pause.
+const latePair=[row(0,'cmc_public_http_429'),row(5.5,'cmc_public_http_429')];
+const between=decideCmcPublicProbe(latePair,{
+  enabled:true,now:new Date(base+7*3600000)
+});
+assert.equal(between.attempt,false,'do not reopen REST early when first 429 ages out');
+assert.equal(between.reason,'recent_429_cooldown');
+assert.ok(between.cooldown_hours>0);
+assert.equal(decideCmcPublicProbe(latePair,{
+  enabled:true,now:new Date(base+8.6*3600000)
+}).attempt,true,'after the final 429 + 3h permit one recovery probe');
+assert.equal(decideCmcPublicProbe([row(0,'cmc_public_http_429'),row(6.5,'cmc_public_http_429')],{
+ enabled:true,now:new Date(base+7*3600000)
+}).attempt,true,'failures separated by >6h do not form a cluster');
 console.log('learning-cmc-public-rate-circuit-selftest: ok');
