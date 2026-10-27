@@ -195,7 +195,7 @@ export async function buildAssetResearch(query, newsLimit = 5) {
   };
 }
 
-export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], includeMicrostructure = true, captureMs, cmcMcpCircuit = null } = {}) {
+export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], includeMicrostructure = true, captureMs, cmcMcpCircuit = null, cmcPublicCircuit = null } = {}) {
   const cleanAssets = [...new Set(
     (Array.isArray(assets) ? assets : [])
       .map(x => String(x || '').trim().toUpperCase())
@@ -230,6 +230,8 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
     mcp_failure_class:null,
     mcp_failure_diagnostics:null,
     public_fallback_attempted:false,
+    public_circuit_reason:cmcPublicCircuit?.reason||'unconfigured',
+    public_fallback_skipped:false,
     public_fallback_error_class:null,
     coinpaprika_fallback_attempted:false,
     coinpaprika_error_class:null,
@@ -257,7 +259,12 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   }
   const primaryFeatures=extractLearningFeatures({assets:cleanAssets,cmc_ids:cmcIds,quotes});
   const primaryCovered=cleanAssets.every(asset=>Number(primaryFeatures.assets?.[asset]?.price_usd)>0);
-  if (!primaryCovered && String(process.env.LEARNING_CMC_PUBLIC_QUOTE_FALLBACK||'false').toLowerCase()==='true') {
+  if (!primaryCovered && String(process.env.LEARNING_CMC_PUBLIC_QUOTE_FALLBACK||'false').toLowerCase()==='true'
+      && cmcPublicCircuit?.attempt===false) {
+    quoteProvenance.public_fallback_skipped=true;
+  }
+  if (!primaryCovered && String(process.env.LEARNING_CMC_PUBLIC_QUOTE_FALLBACK||'false').toLowerCase()==='true'
+      && cmcPublicCircuit?.attempt!==false) {
     quoteProvenance.public_fallback_attempted=true;
     try {
       // One free, unauthenticated official CMC call, no retries or unverified markets.
