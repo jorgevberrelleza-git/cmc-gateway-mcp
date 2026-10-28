@@ -30,4 +30,12 @@ const av=assessRuleCandidate([snap(0,{asset:'AAVE',fund:'contradicts',quality:8}
 assert.equal(av.action,'RESEARCH_REDUCE');
 assert.equal(av.position_change_allowed,false);
 assert.equal(assessRuleCandidate([snap(0)],'UNKNOWN').action,'HOLD');
+// A forward-only decision cannot read snapshots generated after its as-of.
+const asOf='2026-10-27T02:00:00Z';
+assert.equal(assessRuleCandidate([snap(0),snap(1),snap(24)],'BTC',asOf).action,'RESEARCH_REDUCE');
+assert.equal(assessRuleCandidate([snap(24)],'BTC',asOf).why,'no_snapshot');
+assert.equal(assessRuleCandidate([snap(0),snap(1)],'BTC','invalid').why,'invalid_as_of');
+const payloadFromFuture=snap(1);
+payloadFromFuture.payload.generated_at=stamp(2);
+assert.equal(assessRuleCandidate([snap(0),payloadFromFuture],'BTC',asOf).why,'persistence_not_confirmed');
 console.log('forward-rule-candidates-selftest: ok');
