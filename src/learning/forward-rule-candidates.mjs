@@ -38,11 +38,20 @@ function base(snapshot,asset){
    return {state:'REENTRY_WATCH',why:'spot_trap_alignment'};
  return {state:'HOLD',why:'mixed_evidence'};
 }
-export function assessRuleCandidate(snapshots=[],asset='BTC'){
+export function assessRuleCandidate(snapshots=[],asset='BTC',asOf=new Date()){
  const symbol=String(asset).toUpperCase();
  if(!['BTC','ADA','AAVE'].includes(symbol))return {action:'HOLD',why:'unsupported_asset',execution_enabled:false};
+ // Freeze the observation boundary before evaluating. A replay must never
+ // consume a snapshot (or embedded payload) that did not exist at asOf.
+ const cutoff=+new Date(asOf);
+ if(!Number.isFinite(cutoff))return {action:'HOLD',why:'invalid_as_of',execution_enabled:false};
  const rows=(Array.isArray(snapshots)?snapshots:[])
-   .filter(x=>x?.payload && Number.isFinite(Date.parse(x.generated_at)))
+   .filter(x=>{
+     if(!x?.payload)return false;
+     const at=Date.parse(x.generated_at);
+     const embedded=x.payload.generated_at==null?at:Date.parse(x.payload.generated_at);
+     return Number.isFinite(at)&&Number.isFinite(embedded)&&at<=cutoff&&embedded<=at;
+   })
    .sort((a,b)=>Date.parse(b.generated_at)-Date.parse(a.generated_at));
  const newest=rows[0],prev=rows[1];
  if(!newest)return {action:'HOLD',why:'no_snapshot',execution_enabled:false};
