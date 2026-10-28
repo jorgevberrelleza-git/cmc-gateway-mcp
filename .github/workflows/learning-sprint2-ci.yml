@@ -76,6 +76,9 @@ jobs:
       - name: Defensive paper model no-lookahead regression
         run: npm run learning:defensive:paper:selftest
 
+      - name: Forward risk and reentry candidate safety gates
+        run: npm run learning:forward:rules:selftest
+
       - name: Prospectively frozen risk and recovery rule tests
         run: npm run learning:rules:v03:selftest
 
