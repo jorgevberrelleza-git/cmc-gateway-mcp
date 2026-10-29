@@ -25,7 +25,11 @@ function base(snapshot,asset){
  const q=evaluateDataConsistency(snapshot);
  if(q.blocking||q.asset_blocks?.[asset]?.length)return {state:'NO_DATA',why:'data_consistency_block'};
  const m=snapshot?.microstructure?.assets?.[asset];
- if(m?.available===true&&m?.venue_price_check?.available!==true)return {state:'NO_DATA',why:'venue_not_verified'};
+ // Fail closed: missing, unavailable or discrepant venue evidence cannot
+ // produce a directional research candidate (especially for AAVE).
+ if(m?.available!==true||m?.venue_price_check?.available!==true||
+    m?.venue_price_check?.material_mismatch!==false)
+   return {state:'NO_DATA',why:'venue_not_verified'};
  const spot=n(f.spot_confirmation),trap=n(f.trap_risk),conf=n(f.microstructure_confidence);
  if(conf==null||conf<POLICY.min_signal_confidence||spot==null||trap==null)
    return {state:'NO_DATA',why:'insufficient_microstructure'};
