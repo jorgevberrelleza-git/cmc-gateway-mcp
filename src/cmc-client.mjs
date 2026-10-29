@@ -1,5 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import {cmcMcpProtocolMode} from './learning/cmc-protocol-policy.mjs';
+import {createCmcHttpObserver,attachCmcHttpObservation} from './learning/cmc-http-observability.mjs';
 
 const CMC_URL = process.env.CMC_MCP_URL || 'https://mcp.coinmarketcap.com/mcp';
 const API_KEY = process.env.CMC_MCP_API_KEY;
@@ -62,7 +63,10 @@ async function createConnectedClient() {
     { versionNegotiation: { mode: cmcMcpProtocolMode(process.env) } }
   );
 
+  // Passive response telemetry; exactly the same requests, authentication and rate limit.
+  const httpObserver=createCmcHttpObserver();
   const transport = new StreamableHTTPClientTransport(new URL(CMC_URL), {
+    fetch:httpObserver.fetch,
     requestInit: {
       headers: {
         'X-CMC-MCP-API-KEY': API_KEY
@@ -77,6 +81,8 @@ async function createConnectedClient() {
     await mcpStage('list_tools',()=>withTimeout(client.listTools()));
     return client;
   } catch(error){
+    // Attach only scalar status/mime-category/counters; never endpoint, headers or key.
+    attachCmcHttpObservation(error,httpObserver);
     await client.close().catch(()=>{});
     throw error;
   }
