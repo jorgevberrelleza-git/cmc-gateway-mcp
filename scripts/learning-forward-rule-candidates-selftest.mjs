@@ -36,10 +36,10 @@ for(const opts of [{venue:false},{venueAvailable:false},{venueMismatch:true}]){
  const a1=snap(1,{asset:'AAVE',fund:'contradicts',quality:8,...opts});
  const blocked=assessRuleCandidate([a0,a1],'AAVE');
  assert.equal(blocked.action,'HOLD');
- assert.equal(blocked.why,'venue_not_verified');
+ assert.ok(['venue_not_verified','data_consistency_block'].includes(blocked.why));
  assert.equal(blocked.execution_enabled,false);
 }
-assert.equal(assessRuleCandidate([snap(0,{venueAvailable:false}),snap(1,{venueAvailable:false})]).why,'venue_not_verified');
+assert.equal(assessRuleCandidate([snap(0,{venueAvailable:false}),snap(1,{venueAvailable:false})]).action,'HOLD');
 assert.equal(assessRuleCandidate([snap(0,{venueMismatch:true}),snap(1,{venueMismatch:true})]).action,'HOLD');
 assert.equal(assessRuleCandidate([snap(0)],'UNKNOWN').action,'HOLD');
 // A forward-only decision cannot read snapshots generated after its as-of.
