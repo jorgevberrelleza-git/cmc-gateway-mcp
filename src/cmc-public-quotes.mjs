@@ -65,12 +65,19 @@ export function summarizeCmcThrownError(error) {
   const stage=safeStages.has(error?.cmc_stage)?error.cmc_stage:'unknown';
   const root=error?.cause&&typeof error.cause==='object'?error.cause:null;
   const name=String(error?.name||'');
+  const observedPost=Number(error?.cmc_transport_post_status);
+  const lastPostStatus=Number.isInteger(observedPost)&&observedPost>=100&&observedPost<=599?observedPost:null;
+  const observedPostKind=['json','sse','other','unknown'].includes(error?.cmc_transport_post_response_kind)?
+    error.cmc_transport_post_response_kind:null;
+  const boundedCounter=v=>Number.isInteger(v)&&v>=0&&v<=99?v:0;
   const codeCandidate=error?.code??error?.statusCode??error?.status??error?.response?.status
-    ??root?.code??root?.statusCode??root?.status??root?.response?.status??null;
+    ??root?.code??root?.statusCode??root?.status??root?.response?.status??
+    (lastPostStatus>=400?lastPostStatus:null);
   const code=typeof codeCandidate==='number'||typeof codeCandidate==='string'?Number(codeCandidate):NaN;
   const numeric=Number.isInteger(code)&&code>=-32768&&code<=100000?code:null;
   const statusCandidate=error?.statusCode??error?.status??error?.response?.status
-    ??root?.statusCode??root?.status??root?.response?.status;
+    ??root?.statusCode??root?.status??root?.response?.status??
+    (lastPostStatus>=400?lastPostStatus:null);
   const statusNumber=Number(statusCandidate);
   const httpStatus=Number.isInteger(statusNumber)&&statusNumber>=400&&statusNumber<=599?statusNumber:null;
   const allowedSdkCodes=new Set(['ERA_NEGOTIATION_FAILED','REQUEST_TIMEOUT','CONNECTION_CLOSED','UNAUTHORIZED','TRANSPORT_ERROR']);
@@ -89,6 +96,11 @@ export function summarizeCmcThrownError(error) {
     category,
     numeric_code:numeric,
     http_status:httpStatus,
+    transport_last_post_status:lastPostStatus,
+    transport_last_post_kind:observedPostKind,
+    transport_post_requests:boundedCounter(error?.cmc_transport_post_requests),
+    transport_get_requests:boundedCounter(error?.cmc_transport_get_requests),
+    transport_fetch_exceptions:boundedCounter(error?.cmc_transport_fetch_exceptions),
     sdk_error_code:sdkCode,
     network_code:networkCode,
     phase:stage,
