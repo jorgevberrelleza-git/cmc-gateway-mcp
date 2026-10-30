@@ -79,6 +79,9 @@ jobs:
       - name: Forward risk and reentry candidate safety gates
         run: npm run learning:forward:rules:selftest
 
+      - name: Shadow v0.4 isolated evidence-family contract (no orders)
+        run: node --check src/learning/risk-evidence-v04.mjs && node --check scripts/learning-risk-evidence-v04-selftest.mjs && node scripts/learning-risk-evidence-v04-selftest.mjs
+
       - name: Prospectively frozen risk and recovery rule tests
         run: npm run learning:rules:v03:selftest
 
