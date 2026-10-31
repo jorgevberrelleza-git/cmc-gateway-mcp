@@ -9,11 +9,18 @@ export const RISK_EVIDENCE_V04 = Object.freeze({
   position_change_allowed: false
 });
 
+// Reject ambiguous local times/date-only strings; evidence must be time-zone attested.
+const EXPLICIT_OFFSET_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
+function parseAttestedTimestamp(value) {
+  if (typeof value !== 'string' || !EXPLICIT_OFFSET_TIMESTAMP.test(value)) return NaN;
+  return Date.parse(value);
+}
+
 export function classifyRiskEvidence({asset, snapshotId, asOf, evidence = []} = {}) {
   const symbol = String(asset || '').toUpperCase();
   if (!['BTC', 'ADA', 'AAVE'].includes(symbol)) throw new Error('unsupported_asset');
   if (snapshotId == null || String(snapshotId).trim() === '') throw new Error('snapshot_id_required');
-  const cutoff = Date.parse(asOf);
+  const cutoff = parseAttestedTimestamp(asOf);
   if (!Number.isFinite(cutoff)) throw new Error('valid_as_of_required');
   if (!Array.isArray(evidence)) throw new Error('evidence_must_be_array');
 
@@ -22,7 +29,7 @@ export function classifyRiskEvidence({asset, snapshotId, asOf, evidence = []} = 
   for (let index = 0; index < evidence.length; index++) {
     const item = evidence[index];
     const family = String(item?.family || '');
-    const observed = Date.parse(item?.observed_at || '');
+    const observed = parseAttestedTimestamp(item?.observed_at);
     let reason = null;
     if (!RISK_EVIDENCE_V04.directional_families.includes(family)) reason = 'non_directional_or_unknown_family';
     else if (!Number.isFinite(observed) || observed > cutoff) reason = 'missing_invalid_or_future_timestamp';

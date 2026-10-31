@@ -39,5 +39,18 @@ assert.equal(evaluate('AAVE', [item('microstructure', {source: ''})]).independen
 assert.throws(() => evaluate('ETH', []), /unsupported_asset/);
 assert.throws(() => classifyRiskEvidence({asset: 'BTC', snapshotId: '1', asOf: 'bad'}), /valid_as_of_required/);
 assert.throws(() => classifyRiskEvidence({asset: 'BTC', snapshotId: '1', asOf: at, evidence: {}}), /evidence_must_be_array/);
+// Naive local timestamps and date-only evidence must not pass no-lookahead gates.
+assert.throws(() => classifyRiskEvidence({asset: 'BTC', snapshotId: '1', asOf: '2026-10-29T23:00:00'}), /valid_as_of_required/);
+const ambiguousTime = evaluate('BTC', [
+  item('structure', {observed_at: '2026-10-29'}),
+  item('microstructure', {observed_at: '2026-10-29T22:00:00'})
+]);
+assert.equal(ambiguousTime.independent_risk_family_count, 0);
+assert.deepEqual(ambiguousTime.rejected_evidence.map(x => x.reason), [
+  'missing_invalid_or_future_timestamp', 'missing_invalid_or_future_timestamp'
+]);
+assert.deepEqual(evaluate('BTC', [item('macro', {
+  primary_source: true, observed_at: '2026-10-29T16:00:00-06:00'
+})]).risk_families, ['macro']);
 assert.equal(RISK_EVIDENCE_V04.execution_enabled, false);
 console.log('risk-evidence-v04 selftest passed: independent families, macro provenance, no lookahead, no execution');
