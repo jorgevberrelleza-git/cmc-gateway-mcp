@@ -259,6 +259,25 @@ if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='t
   };
 }
 
+
+// Isolated synthetic Groq canary: explicit opt-in only, at most once per UTC day.
+// Never sends portfolio data, affects decisions, or changes cycle status.
+let groqCanary=null;
+if(String(process.env.LEARNING_GROQ_CANARY_ENABLED||'false').toLowerCase()==='true'
+   && cycleStarted.getUTCHours()===4 && collectorOk){
+ const probe=spawnSync('node',['scripts/learning-groq-canary.mjs'],{
+   encoding:'utf8',env:process.env,timeout:16000,maxBuffer:256*1024
+ });
+ const line=String(probe.stdout||'').split(/\r?\n/)
+   .find(x=>x.startsWith('SHADOW_GROQ_CANARY='))||null;
+ groqCanary={
+   attempted:true,ok:probe.status===0&&Boolean(line),
+   summary:line?line.slice(0,2000):null,
+   error:probe.status===0?null:'groq_canary_failed',
+   execution_enabled:false
+ };
+}
+
 console.log(JSON.stringify({
   ok,
   cycle_status: cycleStatus,
@@ -279,6 +298,7 @@ console.log(JSON.stringify({
   skills_daily: skillsDaily,
   defensive_research: defensiveResearch,
   forward_rules_v03: forwardRulesV03,
+  groq_canary: groqCanary,
   execution_enabled: false
 }, null, 2));
 if (!ok) process.exitCode = 1;
