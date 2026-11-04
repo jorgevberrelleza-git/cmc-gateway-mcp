@@ -10,3 +10,6 @@ This is a deliberately isolated prototype, **NOT production trading AI**.
 - Do **not** activate any live network test until free-tier limits, data privacy and monthly cap are explicitly verified. Never send customer identifiers, secrets, portfolio balances, or nonpublic data.
 - The output is not a trusted evidence source. Changes to production reasoning require a separate PR: JSON validation, source provenance, rate limiter, daily budget, CI, shadow-only canary logs, no order permission, and 72h monitoring.
 - Rollback: do not merge PR; deleting this isolated module/test has no effect on Render.
+
+## Existing Render cron integration
+The existing hourly cron has an **optional sidecar**. Default is disabled. Set `LEARNING_GROQ_CANARY_ENABLED=true` only for a controlled evaluation. It runs at `04:15 UTC` once per day when collection succeeds. The only remote payload consists of three fixed synthetic BTC facts, not real portfolio information. It prints a sanitized `SHADOW_GROQ_CANARY` summary, never the key or raw provider JSON. Sidecar failure does not alter cycle status or trade permissions. The shell script is `node scripts/learning-groq-canary.mjs`. To stop all Groq calls, revert `LEARNING_GROQ_CANARY_ENABLED=false` without changing the existing cron schedule. Do not enable `LEARNING_REASONING_PROVIDER=openai_responses`, as that is a separate paid engine.
