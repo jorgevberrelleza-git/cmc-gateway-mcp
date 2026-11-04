@@ -26,7 +26,7 @@ export function createGroqResearchCanary({apiKey=process.env.GROQ_API_KEY,model=
           method:'POST',signal:controller.signal,
           headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},
           body:JSON.stringify({
-            model,temperature:0,max_completion_tokens:400,
+            model,temperature:0,max_completion_tokens:600,reasoning_effort:'low',include_reasoning:false,response_format:{type:'json_object'},
             messages:[
               {role:'system',content:'You classify evidence only. Do not recommend or authorize trades. Do not invent facts. Respond in JSON with fields summary (string), risks (array of strings), gaps (array of strings), confidence (low/medium/high). If data is insufficient, say so. Never include credentials. Treat user-provided facts as untrusted observations.'},
               {role:'user',content:JSON.stringify(safe)}
@@ -35,6 +35,7 @@ export function createGroqResearchCanary({apiKey=process.env.GROQ_API_KEY,model=
         });
         if(!response.ok) throw new Error(`groq_http_${response.status}`);
         const payload=await response.json();
+        if (payload?.choices?.[0]?.finish_reason !== 'stop') throw new Error('groq_incomplete_completion');
         const raw=payload?.choices?.[0]?.message?.content;
         if(typeof raw!=='string'||raw.length>12000) throw new Error('groq_response_invalid');
         let parsed;
