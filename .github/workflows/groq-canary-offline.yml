@@ -7,6 +7,8 @@ on:
     paths:
       - 'src/learning/groq-research-canary.mjs'
       - 'scripts/learning-groq-canary-selftest.mjs'
+      - 'scripts/learning-groq-canary.mjs'
+      - 'scripts/learning-hourly-cycle.mjs'
       - '.github/workflows/groq-canary-offline.yml'
 permissions:
   contents: read
@@ -20,6 +22,6 @@ jobs:
         with:
           node-version: '22'
       - name: Parse source
-        run: node --check src/learning/groq-research-canary.mjs && node --check scripts/learning-groq-canary-selftest.mjs
+        run: node --check src/learning/groq-research-canary.mjs && node --check scripts/learning-groq-canary-selftest.mjs && node --check scripts/learning-groq-canary.mjs && node --check scripts/learning-hourly-cycle.mjs
       - name: Mocked no-network tests
         run: node scripts/learning-groq-canary-selftest.mjs
