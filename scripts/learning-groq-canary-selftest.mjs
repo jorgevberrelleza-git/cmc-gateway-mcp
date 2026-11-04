@@ -10,8 +10,11 @@ const fakeFetch=async(_url,args)=>{
   assert.equal(args.signal.aborted,false);
   const request=JSON.parse(args.body);
   assert.equal(request.model,'openai/gpt-oss-20b');
+  assert.equal(request.reasoning_effort,'low');
+  assert.equal(request.include_reasoning,false);
+  assert.equal(request.response_format.type,'json_object');
   assert.equal(request.messages[1].role,'user');
-  return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({summary:'Insufficient evidence',risks:['Data gap'],gaps:['Verify venue'],confidence:'low'})}}]})};
+  return {ok:true,json:async()=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify({summary:'Insufficient evidence',risks:['Data gap'],gaps:['Verify venue'],confidence:'low'})}}]})};
 };
 const disabled=await createGroqResearchCanary({enabled:false,apiKey:'fake',fetchImpl:fakeFetch}).analyze(observation);
 assert.equal(disabled.skipped,true);
@@ -25,4 +28,4 @@ assert.equal(result.analysis.confidence,'low');
 assert.equal(result.execution_enabled,false);
 assert.equal(result.authorizes_position_change,false);
 assert.equal(calls,1);
-console.log(JSON.stringify({ok:true,tests:8,network_calls:0,execution_enabled:false}));
+console.log(JSON.stringify({ok:true,tests:11,network_calls:0,execution_enabled:false}));
