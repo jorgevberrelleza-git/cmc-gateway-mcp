@@ -1,0 +1,25 @@
+name: Groq read-only canary offline validation
+on:
+  push:
+    branches:
+      - feature/shadow-groq-readonly-canary-20261103
+  pull_request:
+    paths:
+      - 'src/learning/groq-research-canary.mjs'
+      - 'scripts/learning-groq-canary-selftest.mjs'
+      - '.github/workflows/groq-canary-offline.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse source
+        run: node --check src/learning/groq-research-canary.mjs && node --check scripts/learning-groq-canary-selftest.mjs
+      - name: Mocked no-network tests
+        run: node scripts/learning-groq-canary-selftest.mjs
