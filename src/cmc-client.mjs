@@ -1,4 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import {cmcMcpProtocolMode} from './learning/cmc-protocol-policy.mjs';
+import {createCmcHttpObserver,attachCmcHttpObservation} from './learning/cmc-http-observability.mjs';
 
 const CMC_URL = process.env.CMC_MCP_URL || 'https://mcp.coinmarketcap.com/mcp';
 const API_KEY = process.env.CMC_MCP_API_KEY;
@@ -40,15 +42,31 @@ async function withTimeout(promise, ms = TIMEOUT_MS) {
   }
 }
 
+// Record the failing MCP protocol stage without ever logging API credentials,
+// request headers, upstream response bodies or exception messages.
+function tagMcpError(error,phase) {
+  if(error&&typeof error==='object'&&!error.cmc_stage){
+    try{Object.defineProperty(error,'cmc_stage',{value:phase,enumerable:false});}catch{}
+  }
+  return error;
+}
+async function mcpStage(phase,fn){
+  try{return await fn();}
+  catch(error){throw tagMcpError(error,phase);}
+}
+
 let upstreamClientPromise = null;
 
 async function createConnectedClient() {
   const client = new Client(
     { name: 'cmc-gateway-upstream', version: '0.3.2' },
-    { versionNegotiation: { mode: 'auto' } }
+    { versionNegotiation: { mode: cmcMcpProtocolMode(process.env) } }
   );
 
+  // Passive response telemetry; exactly the same requests, authentication and rate limit.
+  const httpObserver=createCmcHttpObserver();
   const transport = new StreamableHTTPClientTransport(new URL(CMC_URL), {
+    fetch:httpObserver.fetch,
     requestInit: {
       headers: {
         'X-CMC-MCP-API-KEY': API_KEY
@@ -56,10 +74,18 @@ async function createConnectedClient() {
     }
   });
 
-  await withTimeout(client.connect(transport));
-  // Discover once per upstream session instead of once per tool call.
-  await withTimeout(client.listTools());
-  return client;
+  try {
+    await mcpStage('initialize',()=>withTimeout(client.connect(transport)));
+    // Discover only once per upstream session; distinguish this step from
+    // authentication/initialization failures without persisting raw messages.
+    await mcpStage('list_tools',()=>withTimeout(client.listTools()));
+    return client;
+  } catch(error){
+    // Attach only scalar status/mime-category/counters; never endpoint, headers or key.
+    attachCmcHttpObservation(error,httpObserver);
+    await client.close().catch(()=>{});
+    throw error;
+  }
 }
 
 async function getClient() {
@@ -85,7 +111,7 @@ export async function listUpstreamTools() {
   await rateLimit();
   const client = await getClient();
   try {
-    return await withTimeout(client.listTools());
+    return await mcpStage('list_tools',()=>withTimeout(client.listTools()));
   } catch (error) {
     await resetClient();
     throw error;
@@ -96,11 +122,16 @@ export async function callCmcTool(name, args = {}) {
   await rateLimit();
   let client = await getClient();
   try {
-    return await withTimeout(client.callTool({ name, arguments: args }));
+    return await mcpStage('call_tool',()=>withTimeout(client.callTool({ name, arguments: args })));
   } catch (error) {
-    // Reconnect once for transport/session failures. Do not blindly retry a
-    // successful MCP error response (for example an upstream rate-limit body).
+    // MCP tool errors can throw (rather than returning isError); retrying
+    // quota/auth/schema failures immediately makes quota pressure worse.
+    const m=String(error?.message||'').toLowerCase();
+    const nonRetryable=/429|1008|rate.limit|quota|401|403|auth|forbidden|unknown tool|not found|invalid.argument|validation|schema|entitlement/.test(m);
+    const transient=/timeout|timed out|econnreset|econnrefused|socket|transport|session|network|fetch failed|disconnected/.test(m);
+    if(nonRetryable || !transient) throw error;
     await resetClient();
+    await rateLimit(); // reconnect is a second upstream call, not a free attempt.
     client = await getClient();
     return await withTimeout(client.callTool({ name, arguments: args }));
   }

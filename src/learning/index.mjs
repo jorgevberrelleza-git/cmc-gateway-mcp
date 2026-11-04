@@ -1,0 +1,25 @@
+export { extractLearningFeatures, extractUsdPrices } from './features.mjs';
+export { detectMaterialEvent, DEFAULT_EVENT_THRESHOLDS } from './event-detector.mjs';
+export { createLearningStore } from './storage.mjs';
+export { validateShadowDecision, SHADOW_ACTIONS, SHADOW_EVIDENCE_FAMILIES } from './decision.mjs';
+export { evaluateDefensivePersistence } from './persistence.mjs';
+export { calculatePaperBuySize, calculatePaperReductionSize, calculateRewardRisk } from './sizing.mjs';
+export { dueHorizons, evaluateSpotDecisionOutcome, OUTCOME_HORIZONS_MS } from './outcome-evaluator.mjs';
+export { validateMacroContext } from './macro-contract.mjs';
+export { createSeedLedgerEvents, paperOrderToLedgerEvent, replayLedger, markLedgerState } from './portfolio-ledger.mjs';
+export { valueHodlBenchmark, buildPortfolioBenchmark } from './benchmark.mjs';
+export { buildDecisionQueueItem, shouldEscalateQueueItem } from './decision-queue.mjs';
+export { analyzeDecisionDrift } from './drift-watchdog.mjs';
+export { scoreDecisionQuality } from './decision-quality.mjs';
+export { buildLearningReport } from './report.mjs';
+export { evidenceFamiliesFromReasons, eventEvidenceByAsset, persistenceObservationsFromSnapshots } from './evidence.mjs';
+export { buildReasoningPacket, sanitizeReasoningPacketForProvider } from './reasoning-packet.mjs';
+export { REASONING_OUTPUT_SCHEMA, reasoningSystemInstructions } from './reasoning-schema.mjs';
+export { buildOpenAIRequest, createReasoningProvider } from './reasoning-provider.mjs';
+export { validateReasoningProposal, buildDeterministicPaperOrder, assessReasoningProposal } from './reasoning-bridge.mjs';
+export { validateShadowRuntimeConfig } from './runtime-config.mjs';
+export { summarizeReasoningCost, buildRuntimeHealth, monthWindowUtc, estimateReasoningRequestCeilingUsd, evaluateMonthlyReasoningBudget } from './runtime-telemetry.mjs';
+
+export { evaluateDataConsistency } from './data-consistency.mjs';
+export { buildRegimeEvidence } from './regime-evidence.mjs';
+export { evaluateShadowV2 } from './shadow-v2.mjs';
