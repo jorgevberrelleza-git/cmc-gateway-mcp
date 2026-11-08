@@ -14,7 +14,7 @@ const check=(bps,expectedBlocked)=>{
 };
 for(const bps of [252.44,419.06,59.01])check(bps,bps>=100);
 const missingTimes=diagnoseVenueBasis({asset:'ADA',venue:{
- available:true,cmc_usd_price:100,bitso_mid:100.5,material_mismatch:false
+ available:true,cmc_usd_price:100,bitso_mid:102.5,material_mismatch:false
 },minorCurrency:'usd'});
 assert(missingTimes.reasons.includes('quote_timestamps_not_attested'));
 assert(missingTimes.reasons.includes('provider_mismatch_flag_disagrees'));
