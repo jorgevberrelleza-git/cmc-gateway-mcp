@@ -1,4 +1,5 @@
 import { extractLearningFeatures } from './features.mjs';
+import { diagnoseSnapshotVenues } from './quote-provenance-diagnostics.mjs';
 
 function parseToolPayload(block) {
   if (block == null) return null;
@@ -114,6 +115,7 @@ export function evaluateDataConsistency(snapshot = {}, {
     conflicts,
     warnings,
     asset_blocks: assetBlocks,
+    quote_provenance_diagnostics: diagnoseSnapshotVenues(snapshot),
     policy: {
       conflicts_reduce_confidence_not_choose_source_silently: true,
       missing_data_must_not_be_inferred: true,
