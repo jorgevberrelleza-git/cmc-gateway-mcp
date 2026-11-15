@@ -32,6 +32,7 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
   const errors = [];
   const warnings = [];
   const assets = parseAssets(env.LEARNING_ASSETS);
+  const quoteSourceMode=String(env.LEARNING_QUOTE_SOURCE_MODE||'paprika_first').trim().toLowerCase();
   const reasoningEnabled = bool(env.LEARNING_REASONING_ENABLED, false);
   const microEnabled = bool(env.LEARNING_INCLUDE_MICROSTRUCTURE, true);
   const webSearch = bool(env.LEARNING_REASONING_WEB_SEARCH, false);
@@ -46,6 +47,8 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
   if (requireDatabase && !env.DATABASE_URL) errors.push('DATABASE_URL_required');
   if (!assets.length || assets.length > 3) errors.push('LEARNING_ASSETS_must_have_1_to_3_assets');
   for (const asset of assets) if (!SUPPORTED_ASSETS.has(asset)) errors.push(`unsupported_learning_asset:${asset}`);
+  if (!['paprika_first','cmc_first'].includes(quoteSourceMode)) errors.push('LEARNING_QUOTE_SOURCE_MODE_invalid');
+  if (quoteSourceMode==='paprika_first' && (assets.length!==3 || assets.some(a=>!SUPPORTED_ASSETS.has(a)))) errors.push('paprika_first_requires_BTC_ADA_AAVE');
 
   const captureMs = n(env.LEARNING_CAPTURE_MS, 18000);
   if (!Number.isFinite(captureMs) || captureMs < 6000 || captureMs > 45000) errors.push('LEARNING_CAPTURE_MS_out_of_range');
@@ -127,6 +130,7 @@ export function validateShadowRuntimeConfig(env = process.env, { requireDatabase
 
   const normalized = {
     assets,
+    quote_source_mode:quoteSourceMode,
     capture_ms: captureMs,
     microstructure_enabled: microEnabled === true,
     reasoning_enabled: reasoningEnabled === true,
