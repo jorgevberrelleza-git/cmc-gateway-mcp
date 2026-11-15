@@ -10,6 +10,9 @@ on:
       - 'src/learning/regime-evidence.mjs'
       - 'src/learning/shadow-v2.mjs'
       - 'src/learning/runtime-config.mjs'
+      - 'src/learning/skill-orchestrator.mjs'
+      - 'scripts/learning-skills-daily.mjs'
+      - 'scripts/learning-independent-source-skill-selftest.mjs'
       - 'scripts/learning-collector.mjs'
       - 'scripts/learning-quote-routing-policy-selftest.mjs'
       - 'scripts/learning-paprika-macro-unknown-selftest.mjs'
@@ -33,6 +36,8 @@ jobs:
           node --check src/learning/shadow-v2.mjs
           node --check src/learning/runtime-config.mjs
           node --check scripts/learning-collector.mjs
+          node --check src/learning/skill-orchestrator.mjs
+          node --check scripts/learning-skills-daily.mjs
       - name: Independent source policy
         run: node scripts/learning-quote-routing-policy-selftest.mjs
       - name: Unknown macro fail closed
@@ -43,5 +48,10 @@ jobs:
         run: node scripts/learning-v2-selftest.mjs
       - name: Existing research and CMC failure contract
         run: node scripts/learning-safe-research-selftest.mjs
+      - name: Independent provider skills telemetry
+        run: node scripts/learning-independent-source-skill-selftest.mjs
       - name: Existing CMC fallback selftest
         run: node scripts/learning-cmc-public-quotes-selftest.mjs
+
+      - name: Existing skills planner regressions
+        run: node scripts/learning-skills-selftest.mjs
