@@ -15,6 +15,14 @@ try{
  const evaluations=await store.listShadowV2Evaluations({from,to:now.toISOString(),limit:500});
  const feedback=evaluateDailySkillFeedback({snapshots:snapshotTape,evaluations,now});
  const executed=[
+   {workflow:'shadow_independent_quote_quality',
+    action:'audit_independent_quote_success_and_emergency_failover',
+    status:plan.sample.independent_primary_attempts>0?'completed_offline':'awaiting_first_paprika_primary_cycle',
+    independent_primary_attempts:plan.sample.independent_primary_attempts,
+    independent_primary_success_runs:plan.sample.independent_primary_success_runs,
+    independent_primary_failure_runs:plan.sample.independent_primary_failure_runs,
+    cmc_emergency_failover_runs:plan.sample.cmc_emergency_failover_runs,
+    aave_venue_verified:plan.sample.venue_comparison_available.AAVE},
    {workflow:'cmc_crypto_data',action:'audit_429_and_fallback_coverage',status:'completed_offline',
     http429_attempts:plan.sample.cmc_public_http_429_runs,
     rest_attempts:plan.sample.cmc_rest_attempt_runs,
