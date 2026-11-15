@@ -39,12 +39,13 @@ function postureForAsset(asset, f, consistency, regime, reasons) {
   const catalystNeedsValidation = regime?.catalyst_gate?.primary_validation_required === true;
   if (catalystNeedsValidation) cautions.push('catalyst:primary_validation_required');
   if (regime?.crypto_regime?.shock_risk === 'high') cautions.push('regime:high_event_risk');
+  if (regime?.crypto_regime?.classification === 'unknown') cautions.push('regime:macro_market_data_unavailable');
 
   let posture = 'OBSERVE';
   if (blockers.some(x => x.startsWith('data:'))) posture = 'DATA_BLOCKED';
   else if (blockers.includes('fundamentals:veto_risk_on')) posture = 'FUNDAMENTAL_VETO';
   else if (blockers.length || cautions.some(x => x.startsWith('microstructure:'))) posture = 'WAIT_RETEST_OR_CONFIRMATION';
-  else if (catalystNeedsValidation) posture = 'WAIT_PRIMARY_CATALYST_VALIDATION';
+  else if (catalystNeedsValidation || cautions.includes('regime:macro_market_data_unavailable')) posture = 'WAIT_PRIMARY_CATALYST_VALIDATION';
 
   const material = reasons.length > 0;
   const researchCandidate = material

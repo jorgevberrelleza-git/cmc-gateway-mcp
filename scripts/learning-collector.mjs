@@ -26,6 +26,7 @@ try {
   const snapshot = await buildTradingSnapshot({
     cmcMcpCircuit,
     cmcPublicCircuit,
+    quoteSourceMode:String(process.env.LEARNING_QUOTE_SOURCE_MODE||'paprika_first').trim().toLowerCase(),
     assets: parseAssets(),
     includeMicrostructure: String(process.env.LEARNING_INCLUDE_MICROSTRUCTURE || 'true').toLowerCase() !== 'false',
     captureMs
@@ -64,6 +65,8 @@ try {
     reasons: materialEvent.reasons,
     research_queue_gate:queueGate,
     cmc_mcp_circuit:cmcMcpCircuit,
+    quote_source:snapshot.quote_provenance?.source||null,
+    quote_routing:snapshot.quote_provenance?.routing_policy||null,
     decision_queue: queued ? {
       id: queued.id,
       status: queued.status,

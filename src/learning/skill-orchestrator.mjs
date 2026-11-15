@@ -9,6 +9,10 @@ export const CMC_SKILL_CATALOG=Object.freeze([
   {id:'cmc_market_context',source:'https://coinmarketcap.com/api/documentation/ai-agent-hub/skills/cmc-api-market',kind:'api-guidance',needs_cmc_pro_key:true},
   {id:'cmc_crypto_research',source:'https://coinmarketcap.com/api/documentation/ai-agent-hub/skills/crypto-research',kind:'mcp-guidance',needs_working_mcp:true}
 ]);
+export const INDEPENDENT_QUOTE_SKILL=Object.freeze({
+  id:'shadow_independent_quote_quality',kind:'local-evidence-skill',
+  paid_api_key_required:false,execution_enabled:false
+});
 const safe=(x)=>Number.isFinite(Number(x))?Number(x):null;
 export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=false}={}){
   const chronological=(Array.isArray(snapshotRows)?snapshotRows:[])
@@ -25,6 +29,13 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
   const cmcRest429=recent.filter(r=>r.payload?.quote_provenance?.public_fallback_error_class==='cmc_public_http_429');
   const cmcRestAttempts=recent.filter(r=>r.payload?.quote_provenance?.public_fallback_attempted===true);
   const cmcRestSuccess=recent.filter(r=>r.payload?.quote_provenance?.source==='cmc_public_v3_keyless');
+  const independentAttempts=recent.filter(r=>r.payload?.quote_provenance?.coinpaprika_primary_attempted===true);
+  const independentSuccess=independentAttempts.filter(r=>
+    r.payload?.quote_provenance?.source==='coinpaprika_public'&&
+    r.payload?.quote_provenance?.routing_policy?.primary_succeeded===true);
+  const independentFailures=independentAttempts.filter(r=>r.payload?.quote_provenance?.coinpaprika_primary_error_class);
+  const cmcEmergencyFailovers=independentAttempts.filter(r=>
+    ['cmc_mcp','cmc_public_v3_keyless'].includes(r.payload?.quote_provenance?.source));
   const previous429=previous24h.filter(r=>r.payload?.quote_provenance?.public_fallback_error_class==='cmc_public_http_429');
   const previousRestAttempts=previous24h.filter(r=>r.payload?.quote_provenance?.public_fallback_attempted===true);
   const rate429=cmcRestAttempts.length?Number((100*cmcRest429.length/cmcRestAttempts.length).toFixed(1)):null;
@@ -51,6 +62,22 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
       mean_excess_vs_hodl_pp:item.test.mean_excess_vs_hodl_pp}
   ]));
   const priorities=[];
+  if(independentAttempts.length){
+    const successRate=Number((100*independentSuccess.length/independentAttempts.length).toFixed(1));
+    priorities.push({
+      id:'independent_quote_quality',
+      priority:independentAttempts.length>=12&&successRate<90?125:94,
+      workflow:'shadow_independent_quote_quality',
+      action:'audit_primary_quote_success_and_Bitso_comparability; block_all_unverified_assets',
+      primary_attempts:independentAttempts.length,
+      primary_success_runs:independentSuccess.length,
+      primary_success_rate_pct:successRate,
+      primary_failure_runs:independentFailures.length,
+      cmc_emergency_failovers:cmcEmergencyFailovers.length,
+      aave_venue_verified:venueCoverage.AAVE,
+      status:'automatic_offline_evidence_quality_audit'
+    });
+  }
   if(primaryFailures.length>=3){
     priorities.push({id:'provider_recovery',priority:100,
       workflow:'cmc_crypto_data',
@@ -101,6 +128,7 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
     contract_version:'shadow_cmc_marketplace_orchestrator_v0.1',
     now:new Date(now).toISOString(),
     source_catalog:CMC_SKILL_CATALOG.map(x=>({id:x.id,kind:x.kind,needs_cmc_pro_key:!!x.needs_cmc_pro_key,needs_working_mcp:!!x.needs_working_mcp})),
+    local_skill_catalog:[INDEPENDENT_QUOTE_SKILL],
     sample:{snapshots:chronological.length,recent_24h:recent.length,
       primary_mcp_failures:primaryFailures.length,primary_attempts:attempts.length,
       coinpaprika_fallback_runs:backupUsage.length,cmc_public_http_429_runs:cmcRest429.length,
@@ -109,6 +137,10 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
       cmc_public_http_429_previous_24h_runs:previous429.length,
       cmc_public_http_429_previous_24h_rate_pct:previousRate429,
       cmc_rest_rate_limit_spike:rateLimitSpike,
+      independent_primary_attempts:independentAttempts.length,
+      independent_primary_success_runs:independentSuccess.length,
+      independent_primary_failure_runs:independentFailures.length,
+      cmc_emergency_failover_runs:cmcEmergencyFailovers.length,
       material_events:material.length,
       high_evidence_research_events:candidates.length,context_only:context,
       venue_comparison_available:venueCoverage,walkforward:sample},
@@ -120,6 +152,6 @@ export function planShadowSkillWork(snapshotRows=[],{now=new Date(),enablePaid=f
     automatic_real_money_orders_allowed:false,
     enablePaid_ignored:true,
     execution_enabled:false,
-    note:'Read-only research planner: external API skills require their own credentials/entitlements; never treat MCP key as Pro REST key.'
+    note:'Independent quote-quality skill runs locally using recorded source provenance. CMC marketplace skills remain optional guidance and are not invoked automatically; no new paid APIs, trades or macro inference.'
   };
 }
