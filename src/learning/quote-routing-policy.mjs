@@ -1,3 +1,4 @@
+import {extractLearningFeatures} from './features.mjs';
 // Read-only market-data source selection. No trades, credentials or hidden retries.
 // The core learning cron uses independent data first, while on-demand CMC tools
 // remain available as opt-in research, not mandatory hourly dependencies.
@@ -32,4 +33,20 @@ export function sourceRouteSummary({route,primarySucceeded,primaryError=null,fal
    failover_source:fallbackSource,
    fallback_requires_primary_failure:route.cmc_allowed_only_if_primary_failed,
    orders_created:0,execution_enabled:false};
+}
+
+export async function resolveIndependentQuotePrimary({route,assets,fetchQuotes}={}){
+ if(!route?.independent_primary)return {attempted:false,quotes:null,error_class:null};
+ if(typeof fetchQuotes!=='function')throw Error('quote_routing_missing_fetcher');
+ try{
+   const quotes=await fetchQuotes({assets});
+   if(quotes?.quote_source!=='coinpaprika_public')throw Error('paprika_source_identity_mismatch');
+   const f=extractLearningFeatures({assets,quotes}).assets||{};
+   if(assets.some(asset=>!(Number(f[asset]?.price_usd)>0)))
+     throw Error('paprika_incomplete_asset_coverage');
+   return {attempted:true,quotes,error_class:null};
+ }catch(error){
+   const msg=String(error?.message||'');
+   return {attempted:true,quotes:null,error_class:/^paprika_[a-z0-9_]+$/.test(msg)?msg:'paprika_network_unavailable'};
+ }
 }
