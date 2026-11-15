@@ -70,7 +70,8 @@ export function buildRegimeEvidence(snapshot = {}, materialEvent = null) {
     if (spotVolume24 > 10 && marketCap24 < 0) score -= 1;
   }
 
-  const cryptoRegime = score >= 2 ? 'favorable' : score <= -2 ? 'adverse' : 'neutral';
+  const marketEvidenceAbsent=marketCap24==null&&spotVolume24==null&&marketRsi14==null&&oi24==null&&fearGreed==null;
+  const cryptoRegime = marketEvidenceAbsent?'unknown':score >= 2 ? 'favorable' : score <= -2 ? 'adverse' : 'neutral';
   const liquidity = spotVolume24 == null
     ? 'unknown'
     : spotVolume24 >= 10 ? 'expanding' : spotVolume24 <= -10 ? 'contracting' : 'stable';
@@ -95,7 +96,8 @@ export function buildRegimeEvidence(snapshot = {}, materialEvent = null) {
     .sort((a, b) => a.hours_until - b.hours_until);
 
   const within24 = upcoming.some(x => x.hours_until <= 24);
-  const shockRisk = within24 ? 'high' : (upcoming.length || leverageElevated) ? 'medium' : 'low';
+  const eventsSourceAvailable=snapshot?.market?.events!=null && snapshot.market.events.isError!==true;
+  const shockRisk = within24 ? 'high' : (upcoming.length || leverageElevated) ? 'medium' : !eventsSourceAvailable?'unknown':'low';
 
   const materialAssets = [...new Set((materialEvent?.reasons || [])
     .map(x => String(x).split(':')[0].toUpperCase())
@@ -122,7 +124,9 @@ export function buildRegimeEvidence(snapshot = {}, materialEvent = null) {
       score,
       liquidity,
       shock_risk: shockRisk,
-      confidence_0_100: confidence
+      confidence_0_100: confidence,
+      market_evidence_absent:marketEvidenceAbsent,
+      event_feed_available:eventsSourceAvailable
     },
     market_evidence: {
       market_cap_change_24h_pct: marketCap24,
