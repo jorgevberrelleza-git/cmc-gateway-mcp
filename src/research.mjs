@@ -4,6 +4,7 @@ import { buildDefiFundamentalsForAssets } from './defi-fundamentals.mjs';
 import { fetchCmcPublicQuotes, classifyCmcQuoteFailure, summarizeCmcMcpFailure, summarizeCmcThrownError } from './cmc-public-quotes.mjs';
 import { fetchCoinPaprikaQuotes } from './coinpaprika-quotes.mjs';
 import { extractLearningFeatures } from './learning/features.mjs';
+import {chooseQuoteRoute,sourceRouteSummary} from './learning/quote-routing-policy.mjs';
 
 async function pass(tool, args = {}) {
   return compactToolResult(await callCmcTool(tool, args));
@@ -195,7 +196,7 @@ export async function buildAssetResearch(query, newsLimit = 5) {
   };
 }
 
-export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], includeMicrostructure = true, captureMs, cmcMcpCircuit = null, cmcPublicCircuit = null } = {}) {
+export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], includeMicrostructure = true, captureMs, cmcMcpCircuit = null, cmcPublicCircuit = null, quoteSourceMode = 'cmc_first' } = {}) {
   const cleanAssets = [...new Set(
     (Array.isArray(assets) ? assets : [])
       .map(x => String(x || '').trim().toUpperCase())
@@ -210,23 +211,39 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
     resolved[asset] = await resolveId(asset);
   }
 
+  const quoteRoute=chooseQuoteRoute({mode:quoteSourceMode,assets:cleanAssets});
+  let independentPrimary=null,independentErrorClass=null;
+  if(quoteRoute.independent_primary){
+    try{
+      // CoinPaprika validates all three IDs, per-asset USD prices and timestamps.
+      // On success, CMC MCP/REST/technicals are NOT contacted in this cycle.
+      independentPrimary=await fetchCoinPaprikaQuotes({assets:cleanAssets});
+    }catch(error){
+      const m=String(error?.message||'');
+      independentErrorClass=/^paprika_[a-z0-9_]+$/.test(m)?m:'paprika_network_unavailable';
+    }
+  }
+
   // CMC CORE BUDGET (BTC/AAVE/ADA):
   //   market context = 5 calls
   //   batched quotes (assets + ETH benchmark) = 1 call
   //   technicals = 1 call per asset (max 3)
   // Total = max 9 CMC tool calls, deliberately below the observed free-tier ceiling.
-  const allowMcp = cmcMcpCircuit?.attempt !== false;
+  const allowMcp = !independentPrimary && cmcMcpCircuit?.attempt !== false;
+  const skippedCmcReason=independentPrimary?'cmc_deprioritized_independent_primary':'cmc_mcp_recovery_cooldown';
   const market = allowMcp ? await buildMarketReport() :
     Object.fromEntries(['global','technicals','derivatives','narratives','events'].map(k=>
-      [k,{isError:true,error:'cmc_mcp_recovery_cooldown'}]));
+      [k,{isError:true,error:skippedCmcReason}]));
 
   const quoteIds = [...new Set(['1027', ...cleanAssets.map(a => resolved[a].id)])].join(',');
   const cmcIds=Object.fromEntries(cleanAssets.map(a=>[a,resolved[a].id]));
   let quotes;
   const quoteProvenance={
-    source:'cmc_mcp',
+    source:independentPrimary?'coinpaprika_public':'cmc_mcp',
     mcp_probe_attempted:allowMcp,
-    mcp_circuit_reason:cmcMcpCircuit?.reason||'unconfigured',
+    mcp_circuit_reason:independentPrimary?'deprioritized_independent_primary':cmcMcpCircuit?.reason||'unconfigured',
+    coinpaprika_primary_attempted:quoteRoute.independent_primary,
+    coinpaprika_primary_error_class:independentErrorClass,
     mcp_failure_class:null,
     mcp_failure_diagnostics:null,
     public_fallback_attempted:false,
@@ -237,7 +254,9 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
     coinpaprika_error_class:null,
     paid_ai_calls_made:0
   };
-  if(!allowMcp) {
+  if(independentPrimary){
+    quotes=independentPrimary;
+  } else if(!allowMcp) {
     quotes={isError:true,error:'cmc_mcp_recovery_cooldown'};
     quoteProvenance.mcp_failure_class='circuit_open';
     quoteProvenance.mcp_failure_diagnostics={
@@ -281,7 +300,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
 
   const afterCmc=extractLearningFeatures({assets:cleanAssets,cmc_ids:cmcIds,quotes});
   const cmcCovered=cleanAssets.every(asset=>Number(afterCmc.assets?.[asset]?.price_usd)>0);
-  if(!cmcCovered && String(process.env.LEARNING_COINPAPRIKA_FALLBACK||'false').toLowerCase()==='true'){
+  if(!cmcCovered && !quoteRoute.independent_primary && String(process.env.LEARNING_COINPAPRIKA_FALLBACK||'false').toLowerCase()==='true'){
     quoteProvenance.coinpaprika_fallback_attempted=true;
     try{
       // Only research snapshots. Three official source tickers, no paid data calls,
@@ -295,10 +314,20 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
     }
   }
 
+  const finalFeatures=extractLearningFeatures({assets:cleanAssets,cmc_ids:cmcIds,quotes});
+  if(quoteRoute.independent_primary &&
+    cleanAssets.some(asset=>!(Number(finalFeatures.assets?.[asset]?.price_usd)>0)))
+    throw Error('quote_routing_no_valid_quote_source');
+  quoteProvenance.routing_policy=sourceRouteSummary({
+    route:quoteRoute,primarySucceeded:!!independentPrimary,
+    primaryError:independentErrorClass,
+    fallbackSource:independentPrimary?null:quoteProvenance.source
+  });
+
   const technicalEntries = [];
   for (const asset of cleanAssets) {
     if(!allowMcp) {
-      technicalEntries.push([asset,{isError:true,error:'cmc_mcp_recovery_cooldown'}]);
+      technicalEntries.push([asset,{isError:true,error:skippedCmcReason}]);
       continue;
     }
     try {
@@ -337,7 +366,7 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   return {
     snapshot_version: '0.6.2',
     generated_at: new Date().toISOString(),
-    providers: ['CoinMarketCap MCP via private CMC Gateway', 'Bitso public REST/WebSocket', 'DefiLlama Free API'],
+    providers: [quoteProvenance.source, 'Bitso public REST/WebSocket', 'DefiLlama Free API'],
     mode: 'read_only_decision_support',
     execution_enabled: false,
     snapshot_depth: includeMicrostructure ? 'core_plus_microstructure_v3_plus_defi_fundamentals_v1' : 'core_plus_defi_fundamentals_v1',
@@ -362,8 +391,8 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
       defi_fundamentals_cannot_create_buy_signal_alone: true,
       missing_defi_metrics_must_not_be_inferred: true
     },
-    deep_research_note: 'Holder metrics, project info and per-asset news are fetched on demand via asset_research. Arbitrary DeFi candidates can be checked on demand with defi_protocol_research. The core CMC budget remains unchanged.',
-    usage_note: 'Use CMC as structured market evidence, Bitso as execution-context evidence, and DefiLlama as a fundamental confirmation/degradation layer. v0.6.2 adds cached DeFi TVL/fees/revenue/stablecoin-liquidity context without increasing CMC calls. Defi fundamentals may confirm, degrade or veto a thesis, but never create a BUY by themselves. Validate material catalysts with primary/authoritative sources before changing a real-money position.'
+    deep_research_note: 'Core learning cron can use verified CoinPaprika first. CMC market/technical evidence is unavailable in such cycles; optional CMC deep research remains separate and must not imply macro verification. DeFi candidates remain supported by dedicated research tools.',
+    usage_note: 'CoinPaprika-first removes broken CMC from the normal hourly dependency path; Bitso venue checks and DefiLlama remain independent. Missing CMC macro/technicals must remain UNKNOWN, not neutral/positive. Research-only, execution disabled. Primary geopolitical catalysts require verified sources before changing risk posture.'
   };
 }
 
