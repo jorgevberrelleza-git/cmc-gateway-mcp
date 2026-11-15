@@ -18,7 +18,7 @@ function snap(h,{primaryOK=true}={}){
     ADA:{venue_price_check:{available:true}},AAVE:{venue_price_check:{available:false}}}}
  }};
 }
-const now=new Date(start+24*3600000);
+const now=new Date(start+23*3600000+60000);
 const all=Array.from({length:24},(_,h)=>snap(h));
 const report=planShadowSkillWork(all,{now});
 assert.equal(report.sample.independent_primary_attempts,24);
