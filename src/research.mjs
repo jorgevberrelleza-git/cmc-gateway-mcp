@@ -4,7 +4,7 @@ import { buildDefiFundamentalsForAssets } from './defi-fundamentals.mjs';
 import { fetchCmcPublicQuotes, classifyCmcQuoteFailure, summarizeCmcMcpFailure, summarizeCmcThrownError } from './cmc-public-quotes.mjs';
 import { fetchCoinPaprikaQuotes } from './coinpaprika-quotes.mjs';
 import { extractLearningFeatures } from './learning/features.mjs';
-import {chooseQuoteRoute,sourceRouteSummary} from './learning/quote-routing-policy.mjs';
+import {chooseQuoteRoute,sourceRouteSummary,resolveIndependentQuotePrimary} from './learning/quote-routing-policy.mjs';
 
 async function pass(tool, args = {}) {
   return compactToolResult(await callCmcTool(tool, args));
@@ -212,17 +212,12 @@ export async function buildTradingSnapshot({ assets = ['BTC', 'AAVE', 'ADA'], in
   }
 
   const quoteRoute=chooseQuoteRoute({mode:quoteSourceMode,assets:cleanAssets});
-  let independentPrimary=null,independentErrorClass=null;
-  if(quoteRoute.independent_primary){
-    try{
-      // CoinPaprika validates all three IDs, per-asset USD prices and timestamps.
-      // On success, CMC MCP/REST/technicals are NOT contacted in this cycle.
-      independentPrimary=await fetchCoinPaprikaQuotes({assets:cleanAssets});
-    }catch(error){
-      const m=String(error?.message||'');
-      independentErrorClass=/^paprika_[a-z0-9_]+$/.test(m)?m:'paprika_network_unavailable';
-    }
-  }
+  // Verified independent quotes short-circuit ALL CMC calls on healthy cycles.
+  const independent=await resolveIndependentQuotePrimary({
+    route:quoteRoute,assets:cleanAssets,fetchQuotes:fetchCoinPaprikaQuotes
+  });
+  const independentPrimary=independent.quotes;
+  const independentErrorClass=independent.error_class;
 
   // CMC CORE BUDGET (BTC/AAVE/ADA):
   //   market context = 5 calls
