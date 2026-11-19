@@ -243,6 +243,25 @@ if(String(process.env.LEARNING_RULES_V03_FORWARD_ENABLED||'false').toLowerCase()
  };
 }
 
+// Forward prediction v0.4: frozen one-a-day market hypotheses, 24h/72h/7d
+// outcome scoring (append-only). Reads snapshots already captured by this
+// cycle; no broker, remote API, AI call, portfolio mutation or cash use.
+let prospectiveV04=null;
+if(String(process.env.LEARNING_PROSPECTIVE_FORECAST_ENABLED||'false').toLowerCase()==='true'
+    && collectorOk) {
+  const run=spawnSync('npm',['run','learning:forecast:forward'],{
+    encoding:'utf8',env:process.env,timeout:28000,maxBuffer:1024*1024
+  });
+  const line=String(run.stdout||'').split(/\r?\n/).find(x=>x.startsWith('SHADOW_PROSPECTIVE_V04='))||null;
+  prospectiveV04={
+    attempted:true,ok:run.status===0&&Boolean(line),status:run.status,
+    compact_summary:line?line.slice(0,11000):null,
+    stderr_tail:String(run.stderr||'').trim().slice(-950),
+    paid_ai_calls_made:0,external_market_calls_made:0,
+    orders_created:0,execution_enabled:false
+  };
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
@@ -298,6 +317,7 @@ console.log(JSON.stringify({
   skills_daily: skillsDaily,
   defensive_research: defensiveResearch,
   forward_rules_v03: forwardRulesV03,
+  prospective_forecast_v04: prospectiveV04,
   groq_canary: groqCanary,
   execution_enabled: false
 }, null, 2));
