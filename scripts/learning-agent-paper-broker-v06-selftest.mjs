@@ -121,10 +121,19 @@ assert.equal(stop.globalMode,'HALT');
 assert.equal(stop.paperAccount.outstandingPaperOrders,0);
 assert.equal(stop.fills.length,0,'unsettled previous orders MUST NOT fill on shock');
 assert.ok(stop.globalStopReasons.includes('daily_loss_limit'));
+assert.equal(stop.paperAccount.haltLatched,true);
+const recoveredControl=control(s180,shock,185);
+const mustStayHalted=runAgentPaperCycle({control:recoveredControl,currentRow:s180,
+  previousState:stop.state,now:new Date(iso(186))});
+assert.equal(mustStayHalted.status,'HALT');
+assert.equal(mustStayHalted.paperAccount.haltLatched,true);
+assert.equal(mustStayHalted.fills.length,0);
+assert.ok(mustStayHalted.globalStopReasons.includes('LATCHED_HALT_REQUIRES_MANUAL_RESET'));
 const incident=runAgentPaperCycle({control:c125,currentRow:s120,
  previousState:paperEntry.state,now:new Date(iso(126)),incidentState:'INCIDENT_VERIFIED'});
 assert.equal(incident.status,'HALT');
 assert.equal(incident.fills.length,0);
+assert.equal(incident.paperAccount.haltLatched,true);
 const altered=structuredClone(growth);altered.assets.BTC.researchPosture='OPERATE_PAPER';
 assert.throws(()=>runAgentPaperCycle({control:altered,currentRow:s60}),/unverified_control_audit/);
 assert.throws(()=>runAgentPaperCycle({control:growth,currentRow:s120}),/control_snapshot_mismatch/);
