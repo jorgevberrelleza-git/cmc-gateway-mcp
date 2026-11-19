@@ -36,6 +36,14 @@ function control(current,previous,t,overrides={}) {
     latestPortfolioMark:{marked_at:iso(t-1),total_value_usd:'10000',alpha_vs_hodl_pct:'0',
       drawdown_pct:'0'}});
   if(overrides.asset){
+    // Isolate the intended asset so the test does not accidentally issue a
+    // second independent recovery order from another bullish fixture.
+    for(const asset of ['BTC','ADA','AAVE'])if(asset!==overrides.asset){
+      x.assets[asset].researchPosture='OBSERVE';
+      x.assets[asset].riskFamilies=[];
+      x.assets[asset].forecast={'24h':{direction:'ABSTAIN'},
+        '72h':{direction:'ABSTAIN'},'168h':{direction:'ABSTAIN'}};
+    }
     Object.assign(x.assets[overrides.asset],overrides.patch);
   }
   const {auditHash,...core}=x;
