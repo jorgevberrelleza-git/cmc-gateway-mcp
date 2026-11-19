@@ -45,6 +45,12 @@ assert.equal(f.allowedPositionChange,false);
 assert.equal(f.executionEnabled,false);
 assert.equal(f.realOrders,0);
 assert.equal(f.probabilitiesCalibrated,false);
+const nestedLater=snap(60);
+nestedLater.payload.generated_at=at(61);
+const driftSafe=issueProspectiveForecast({previousRow:past,currentRow:nestedLater,now:issuedAt});
+assert.equal(driftSafe.assets.BTC.observationAt,at(61));
+assert.equal(driftSafe.assets.BTC.sourceQualityPassed,true);
+assert.equal(driftSafe.assets.BTC.horizons['24h'].direction,'DOWN');
 assert.ok(/^[a-f0-9]{64}$/.test(f.commitmentHash));
 assert.equal(HORIZONS.length,3);
 assert.equal(ASSETS.length,3);
@@ -68,6 +74,11 @@ assert.equal(graded.actualDirection,'DOWN');
 assert.equal(graded.hit,true);
 assert.ok(graded.actualReturnPct < -1.5);
 assert.equal(graded.executionEnabled,false);
+const outcomeNestedFuture=snap((+matured-base)/60000,{price:90});
+outcomeNestedFuture.payload.generated_at=new Date(+issuedAt+HORIZONS[0].ms+4*3600000).toISOString();
+assert.throws(()=>settleProspectiveForecast({
+  forecast:f,asset:'BTC',horizon:'24h',observedRow:outcomeNestedFuture,now:new Date(+issuedAt+HORIZONS[0].ms+5*3600000)
+}),/invalid_outcome_timestamp/);
 const misses=settleProspectiveForecast({
   forecast:f,asset:'BTC',horizon:'24h',
   observedRow:snap((+matured-base)/60000,{price:120}),
