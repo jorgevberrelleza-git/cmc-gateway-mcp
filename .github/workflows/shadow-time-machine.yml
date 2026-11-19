@@ -1,0 +1,88 @@
+name: Shadow Time Machine - isolated replay
+on:
+  push:
+    branches:
+      - feature/shadow-time-machine-mvp-20261118
+      - feature/learning-engine-v0.1
+    paths:
+      - 'src/simulator/**'
+      - 'scripts/learning-time-machine*'
+      - '.github/workflows/shadow-time-machine.yml'
+      - 'docs/shadow-time-machine.md'
+      - 'package.json'
+  pull_request:
+    paths:
+      - 'src/simulator/**'
+      - 'scripts/learning-time-machine*'
+      - '.github/workflows/shadow-time-machine.yml'
+      - 'docs/shadow-time-machine.md'
+      - 'package.json'
+  workflow_dispatch:
+    inputs:
+      full_history:
+        description: 'Download 2021-01..2026-10 historical SPOT data (verified public ZIPs). Default is 3-month smoke test'
+        required: false
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: shadow-time-machine-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+jobs:
+  offline_unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LEARNING_REASONING_ENABLED: 'false'
+      LEARNING_REASONING_WEB_SEARCH: 'false'
+      LEARNING_EXECUTION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static syntax
+        run: |
+          node --check src/simulator/time-machine.mjs
+          node --check src/simulator/history.mjs
+          node --check scripts/learning-time-machine.mjs
+          node --check scripts/learning-time-machine-selftest.mjs
+          python3 -m py_compile scripts/learning-time-machine-fetch.py
+      - name: Offline and future-leak tests
+        run: node scripts/learning-time-machine-selftest.mjs
+      - name: Reproduce 5-year synthetic fixture
+        run: node scripts/learning-time-machine.mjs --demo --output=synthetic-5y.json
+      - name: Archive test-only report
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-time-machine-synthetic-5y
+          path: artifacts/time-machine/synthetic-5y.json
+          retention-days: 14
+
+  public_historical_smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LEARNING_REASONING_ENABLED: 'false'
+      LEARNING_EXECUTION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch verified Binance public historical data (no API keys)
+        run: |
+          if [ "${{ inputs.full_history || 'false' }}" = "true" ]; then
+            python3 scripts/learning-time-machine-fetch.py --start=2021-01 --end=2026-10 --interval=1d
+          else
+            python3 scripts/learning-time-machine-fetch.py --start=2026-06 --end=2026-08 --interval=1d
+          fi
+      - name: Historical replay with commission and slippage
+        run: node scripts/learning-time-machine.mjs --manifest=manifest.json --root=data/time-machine --output=historical-report.json
+      - name: Archive historical research result (no raw market data)
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-time-machine-real-history
+          path: artifacts/time-machine/historical-report.json
+          retention-days: 14
