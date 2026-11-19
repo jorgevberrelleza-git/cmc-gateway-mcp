@@ -283,6 +283,27 @@ if(String(process.env.LEARNING_AUTONOMY_CONTROL_ENABLED||'false').toLowerCase()=
   };
 }
 
+// Agent Paper Broker v0.6. Runs AFTER autonomous control v0.5.
+// Own independent simulated account, frozen research inputs, next-snapshot
+// paper-only fills, fee/spread/slippage proxy and loss-based HALT.
+// No access to Bitso private endpoints or real-money routing.
+let paperBrokerV06=null;
+if(String(process.env.LEARNING_AGENT_PAPER_BROKER_ENABLED||'false').toLowerCase()==='true'
+    && collectorOk && autonomyControlV05?.ok===true){
+  const run=spawnSync('npm',['run','learning:agent:paper'],{
+    encoding:'utf8',env:process.env,timeout:28000,maxBuffer:1024*1024
+  });
+  const line=String(run.stdout||'').split(/\r?\n/)
+    .find(x=>x.startsWith('SHADOW_PAPER_BROKER_V06='))||null;
+  paperBrokerV06={
+    attempted:true,ok:run.status===0&&Boolean(line),status:run.status,
+    summary:line?line.slice(0,12000):null,
+    stderr_tail:String(run.stderr||'').trim().slice(-1000),
+    simulated_only:true,real_order_router_connected:false,
+    real_orders_created:0,execution_enabled:false
+  };
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
@@ -340,6 +361,7 @@ console.log(JSON.stringify({
   forward_rules_v03: forwardRulesV03,
   prospective_forecast_v04: prospectiveV04,
   autonomy_control_v05: autonomyControlV05,
+  paper_broker_v06: paperBrokerV06,
   groq_canary: groqCanary,
   execution_enabled: false
 }, null, 2));
