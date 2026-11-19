@@ -54,12 +54,14 @@ export function initialPaperState({capitalUsd=PAPER_BROKER_LIMITS.initialUsd,atT
     dayUtc:atTime?String(atTime).slice(0,10):null,latestEquityUsd:capitalUsd,
     pending:[],recentFills:[],cumulativeFeesUsd:0,filledOrders:0,
     lastControlHash:null,lastSnapshotId:null,lastEvaluatedAt:null,
+    haltLatched:false,haltReason:null,
     liveBrokerConnected:false,realOrders:0
   };
 }
 function cleanState(s){
   if(s?.version!==PAPER_BROKER_VERSION||s.model!=='USD_PROXY_NOT_EXECUTABLE_IN_BITSO'||
     s.liveBrokerConnected!==false||s.realOrders!==0)fail('unsafe_or_unknown_previous_state');
+  if(typeof s.haltLatched!=='boolean'||(s.haltLatched && !s.haltReason))fail('invalid_halt_latch');
   if(s.initialUsd<=0||!Number.isFinite(s.initialUsd)||!Number.isFinite(s.cashUsd)||s.cashUsd < -1e-7||
      !Number.isFinite(s.latestEquityUsd)||s.latestEquityUsd<0||!Number.isFinite(s.peakEquityUsd)||
      s.peakEquityUsd<=0||!Number.isFinite(s.dayStartEquityUsd)||s.dayStartEquityUsd<=0 ||
@@ -201,7 +203,13 @@ export function runAgentPaperCycle({
   // a price shock cannot execute an old buy and only then trigger HALT.
   let limits=quotesComplete?eligibleLimits(state,quotes,riskPolicy):
     {halt:true,reason:'missing_valid_market_quote',equityUsd:null,dayLossPct:null,drawdownPct:null};
-  let globalHalt=globalEmergency||!quotesComplete||limits.halt;
+  let globalHalt=globalEmergency||!quotesComplete||limits.halt||state.haltLatched;
+  if(incidentState==='INCIDENT_VERIFIED'||limits.halt){
+    state.haltLatched=true;
+    state.haltReason=incidentState==='INCIDENT_VERIFIED'?'OFFICIAL_INCIDENT_REQUIRES_RESET':
+      'RISK_LIMIT_REQUIRES_RESET:'+String(limits.reason);
+    globalHalt=true;
+  }
   const filled=[],unfilled=[];
   if(!globalHalt) {
     for(const intent of state.pending) {
@@ -215,6 +223,10 @@ export function runAgentPaperCycle({
   state.pending=globalHalt?[]:unfilled; // all pending canceled on incident/data failure
   if(!globalHalt)limits=eligibleLimits(state,quotes,riskPolicy);
   globalHalt ||=limits.halt;
+  if(limits.halt){
+    state.haltLatched=true;
+    state.haltReason='RISK_LIMIT_REQUIRES_RESET:'+String(limits.reason);
+  }
   if(globalHalt)state.pending=[];
   const all=SUPPORTED_ASSETS.map(asset=>{
     const x={...(control.assets?.[asset]||{}),asset};
@@ -274,7 +286,8 @@ export function runAgentPaperCycle({
     globalStopReasons:globalHalt?
       [!dataTrusted?'quality_or_runtime_fail':null,stale?'stale_snapshot':null,
        incidentState==='INCIDENT_VERIFIED'?'verified_incident':null,
-       !quotesComplete?'missing_quote':null,limits.reason].filter(Boolean):[],
+       !quotesComplete?'missing_quote':null,limits.reason,
+       state.haltLatched?'LATCHED_HALT_REQUIRES_MANUAL_RESET':null].filter(Boolean):[],
     incidentState,assetDecisions:all,
     submittedPaperIntents:commands,fills:filled,
     paperAccount:{
@@ -283,7 +296,8 @@ export function runAgentPaperCycle({
       unrealizedReturnPct:m.complete?r(100*(m.equityUsd/state.initialUsd-1)):null,
       dayLossPct:limits.dayLossPct??null,drawdownPct:limits.drawdownPct??null,
       outstandingPaperOrders:state.pending.length,filledOrders:state.filledOrders,
-      paidFeesUsd:state.cumulativeFeesUsd
+      paidFeesUsd:state.cumulativeFeesUsd,
+      haltLatched:state.haltLatched,haltReason:state.haltReason
     },
     dataModel:'USD_PROXY_NOT_EXECUTABLE_IN_BITSO',
     riskPolicy,
