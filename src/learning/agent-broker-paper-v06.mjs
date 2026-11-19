@@ -276,7 +276,7 @@ export function runAgentPaperCycle({
        incidentState==='INCIDENT_VERIFIED'?'verified_incident':null,
        !quotesComplete?'missing_quote':null,limits.reason].filter(Boolean):[],
     incidentState,assetDecisions:all,
-    submittedPaperIntents:commands,fills,
+    submittedPaperIntents:commands,fills:filled,
     paperAccount:{
       initialUsd:state.initialUsd,cashUsd:state.cashUsd,positions:state.positions,
       equityUsd:m.equityUsd,peakEquityUsd:state.peakEquityUsd,
