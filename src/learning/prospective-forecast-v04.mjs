@@ -14,7 +14,8 @@ export const HORIZONS = Object.freeze([
   Object.freeze({ id:'168h', ms:604_800_000, neutralBandPct:4.0 })
 ]);
 const SOURCES = new Set(FORWARD_RULES_V03.allowed_quote_sources);
-const sha = obj => crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex');
+const stable = x => Array.isArray(x) ? x.map(stable) : x && typeof x==='object' && !(x instanceof Date) ? Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])) : x;
+const sha = obj => crypto.createHash('sha256').update(JSON.stringify(stable(obj))).digest('hex');
 const num = v => { if (v==null || typeof v==='boolean'||typeof v==='object')return null;const n=Number(v);return Number.isFinite(n)?n:null; };
 const fail = m => { throw new Error('shadow_prospective:' + m); };
 const iso = v => { const x=Date.parse(v); return Number.isFinite(x)?x:null; };
