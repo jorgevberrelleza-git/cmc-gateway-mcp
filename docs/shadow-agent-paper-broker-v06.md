@@ -24,7 +24,7 @@ Priority: global HALT > defensive evidence > recovery paper experiment > liquidi
 - Paper execution always uses the **NEXT independently saved snapshot** after the order was issued; no same-tick fill. Old orders >3h expire. No shorting, borrowing, margin, withdrawals, real order clients, or exchange API calls.
 - Every paper record includes decision snapshot ID, audit of v0.5, order IDs, quotes and costs, pending fills, simulated positions, cash, mark-to-market and halt cause.
 - Persist through existing append-only learning_shadow_v2_evaluations with version shadow_agent_paper_v0.6, uniqueness of snapshot + version, SHA256 on prior record. Never touches existing production mock ledger or any Bitso account.
-- Overlapping runs remain a concurrency risk for future integration; before any serious broker sandbox integration, migrate account state and idempotency to transactional DB with advisory lock and compensating recovery.
+- **v0.6 paper state now has transaction-scoped PostgreSQL advisory serialization**: exclusive nonblocking lock, read-latest-snapshot/control/prior account, validate hash, calculate paper-only decisions and insert a unique per-snapshot report under the same transaction. Concurrent workers fail closed without advancing state; duplicate snapshot repeats return the existing report. No schema migration or new paid service. This only protects simulated database state. Production broker idempotency, external side effects, durable partial-order lifecycle and recovery still require a separately certified adapter.
 
 ## Execution
 - Tests: npm run learning:agent:paper:selftest
