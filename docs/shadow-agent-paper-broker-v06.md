@@ -19,7 +19,7 @@ Priority: global HALT > defensive evidence > recovery paper experiment > liquidi
 ## A separate fictional account (NOT Bitso)
 - Initial virtual balance **USD 10,000** (not user assets).
 - Maximum paper buy size 5% of equity, <=20% per asset, <=60% total exposure, >=40% cash.
-- Pre-fill halt if daily loss >=2% or total drawdown >=10%. Hard stop blocks ALL pending orders BEFORE settlement; not merely after a bad fill.
+- Pre-fill halt if daily loss >=2% or total drawdown >=10%. Hard stop blocks ALL pending orders BEFORE settlement; not merely after a bad fill. **Severe loss or verified official incident sets a persistent halt latch**: restored prices DO NOT resume paper trading. A separately audited manual-reset workflow is not implemented, therefore this v0.6 instance stays stopped after such an incident until explicit reviewed recovery code is built.
 - Simulated fees: 10 basis points, total assumed spread: 20 bps, slippage: 15 bps. These are **assumptions**, not measured Bitso costs and may be wildly wrong for AAVE, volatility or MXN-USDC cross.
 - Paper execution always uses the **NEXT independently saved snapshot** after the order was issued; no same-tick fill. Old orders >3h expire. No shorting, borrowing, margin, withdrawals, real order clients, or exchange API calls.
 - Every paper record includes decision snapshot ID, audit of v0.5, order IDs, quotes and costs, pending fills, simulated positions, cash, mark-to-market and halt cause.
