@@ -1,0 +1,31 @@
+name: Shadow Time Machine - full public history research
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/shadow-time-machine-full-history.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  five_year_replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LEARNING_REASONING_ENABLED: 'false'
+      LEARNING_EXECUTION_ENABLED: 'false'
+      LEARNING_REASONING_WEB_SEARCH: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch 70 monthly public spot files per symbol (official SHA256 checksums)
+        run: python3 scripts/learning-time-machine-fetch.py --start=2021-01 --end=2026-10 --interval=1d
+      - name: Replay all three actual histories with isolated ledger, no exchange credentials
+        run: node scripts/learning-time-machine.mjs --manifest=manifest.json --root=data/time-machine --output=real-history-2021-2026.json
+      - name: Retain audited result, not raw ZIP or keys
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-time-machine-full-2021-2026
+          path: artifacts/time-machine/real-history-2021-2026.json
+          retention-days: 14
