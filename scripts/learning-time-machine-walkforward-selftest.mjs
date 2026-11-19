@@ -28,10 +28,13 @@ const last = Date.UTC(2026, 0, 1);
 for (const asset of ['BTC', 'ADA', 'AAVE']) {
   for (const bar of alteredTest[asset]) {
     if (bar.openTime >= last) {
-      bar.open *= 0.58;
-      bar.high *= 0.58;
-      bar.low *= 0.58;
-      bar.close *= 0.58;
+      const daysInto2026 = (bar.openTime - last) / 86_400_000;
+      // Change the SHAPE, not just the scale, of future-only history.
+      const factor = 0.45 + daysInto2026 * 0.004;
+      bar.open *= factor;
+      bar.high *= factor;
+      bar.low *= factor;
+      bar.close *= factor;
     }
   }
 }
