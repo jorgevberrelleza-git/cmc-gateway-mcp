@@ -72,7 +72,9 @@
     "learning:time-machine:walkforward": "node scripts/learning-time-machine-walkforward.mjs",
     "learning:time-machine:walkforward:selftest": "node scripts/learning-time-machine-walkforward-selftest.mjs",
     "learning:regime:lab": "node scripts/learning-regime-lab.mjs",
-    "learning:regime:selftest": "node scripts/learning-regime-event-selftest.mjs"
+    "learning:regime:selftest": "node scripts/learning-regime-event-selftest.mjs",
+    "learning:forecast:forward": "node scripts/learning-prospective-forecast-v04.mjs",
+    "learning:forecast:selftest": "node scripts/learning-prospective-forecast-v04-selftest.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
