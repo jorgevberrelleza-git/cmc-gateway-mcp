@@ -61,7 +61,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install pg in isolated CI runner
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Verify real PostgreSQL exclusive paper journal lock
         env:
           PAPER_LOCK_TEST_DATABASE_URL: postgres://postgres:testing_only_no_real_secrets@localhost:5432/shadow_lock_test
