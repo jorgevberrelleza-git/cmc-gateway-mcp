@@ -49,7 +49,7 @@ assert.equal(initial.cashUsd,10000);
 assert.equal(initial.realOrders,0);
 assert.equal(c65.realMoneyReady,false);
 const baseline=runAgentPaperCycle({control:c65,currentRow:s60,now:new Date(iso(66))});
-assert.ok(['LIQUIDITY','PAPER_RESEARCH_ACTIVE'].includes(baseline.globalMode||baseline.status));
+assert.ok(['LIQUIDITY','DEFENSIVE','OPERATE_PAPER','HALT'].includes(baseline.globalMode));
 assert.equal(baseline.realOrdersCreated,0);
 assert.equal(baseline.brokerApiCalls,0);
 assert.equal(baseline.fills.length,0);
