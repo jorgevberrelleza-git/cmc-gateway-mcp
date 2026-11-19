@@ -197,7 +197,11 @@ export function runAgentPaperCycle({
   const stale=nowMs-Math.max(rowTs,sourceTs)>110*60000;
   const globalEmergency=!dataTrusted||stale||incidentState==='INCIDENT_VERIFIED';
   const quotesComplete=SUPPORTED_ASSETS.every(a=>quotes[a].valid===true);
-  let globalHalt=globalEmergency||!quotesComplete;
+  // Risk preflight MUST happen BEFORE settling yesterday's pending order:
+  // a price shock cannot execute an old buy and only then trigger HALT.
+  let limits=quotesComplete?eligibleLimits(state,quotes,riskPolicy):
+    {halt:true,reason:'missing_valid_market_quote',equityUsd:null,dayLossPct:null,drawdownPct:null};
+  let globalHalt=globalEmergency||!quotesComplete||limits.halt;
   const filled=[],unfilled=[];
   if(!globalHalt) {
     for(const intent of state.pending) {
@@ -209,8 +213,7 @@ export function runAgentPaperCycle({
     }
   }
   state.pending=globalHalt?[]:unfilled; // all pending canceled on incident/data failure
-  let limits=quotesComplete?eligibleLimits(state,quotes,riskPolicy):
-    {halt:true,reason:'missing_valid_market_quote',equityUsd:null,dayLossPct:null,drawdownPct:null};
+  if(!globalHalt)limits=eligibleLimits(state,quotes,riskPolicy);
   globalHalt ||=limits.halt;
   if(globalHalt)state.pending=[];
   const all=SUPPORTED_ASSETS.map(asset=>{
