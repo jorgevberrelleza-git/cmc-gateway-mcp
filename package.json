@@ -66,7 +66,9 @@
     "learning:rules:v03:selftest": "node scripts/learning-prospective-rules-v03-selftest.mjs",
     "learning:rules:v03:forward": "node scripts/learning-prospective-rules-v03.mjs",
     "learning:rules:v03:db:selftest": "node scripts/learning-prospective-rules-v03-db-selftest.mjs",
-    "learning:forward:rules:selftest": "node scripts/learning-forward-rule-candidates-selftest.mjs"
+    "learning:forward:rules:selftest": "node scripts/learning-forward-rule-candidates-selftest.mjs",
+    "learning:time-machine": "node scripts/learning-time-machine.mjs",
+    "learning:time-machine:selftest": "node scripts/learning-time-machine-selftest.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
