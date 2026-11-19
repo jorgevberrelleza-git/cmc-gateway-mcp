@@ -176,10 +176,12 @@ function simulate(validated, { policy, initialCashUsd, feeBps, slippageBps, maxA
 
     for (const asset of ASSETS) {
       const history = Object.freeze(validated.alignedBars[asset].slice(0, i + 1));
+      const btcHistory = Object.freeze(validated.alignedBars.BTC.slice(0, i + 1));
       const lastClosed = history.at(-1);
-      // Only a built-in policy function, provided with an immutable history prefix.
+      // Cross-asset market context is strictly aligned to the SAME closed bar.
+      // A regime policy cannot see tomorrow's BTC bar while choosing ADA/AAVE.
       const decision = policy.decide(Object.freeze({
-        asset, history, units: positions[asset],
+        asset, history, btcHistory, units: positions[asset],
         equityUsd: currentEquity, cashUsd: cash,
         observedThrough: lastClosed.closeTime
       }));
