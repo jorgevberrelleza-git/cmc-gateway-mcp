@@ -25,8 +25,11 @@ export function priceFromSnapshot(row,asset,{now, maxAgeMs=110*60_000}={}) {
   const observed=iso(row?.generated_at),embedded=iso(row?.payload?.generated_at);
   const cutoff = now instanceof Date?+now:Number(now);
   if(!Number.isFinite(cutoff) || !Number.isFinite(observed))return {valid:false,why:'bad_observation_time'};
-  if(observed>cutoff || (embedded!=null && (embedded>observed || embedded>cutoff)))return {valid:false,why:'future_embedded_or_snapshot'};
-  if(cutoff-observed>maxAgeMs)return {valid:false,why:'stale_quote'};
+  // Snapshot row and nested payload timestamps may differ slightly after persistence.
+  // Use the LATER of both as the only defensible observation time; do not backdate.
+  const asOf=Math.max(observed,embedded??observed);
+  if(asOf>cutoff)return {valid:false,why:'future_embedded_or_snapshot'};
+  if(cutoff-asOf>maxAgeMs)return {valid:false,why:'stale_quote'};
   const source=String(row?.payload?.quote_provenance?.source||'');
   if(!SOURCES.has(source))return {valid:false,why:'unverified_quote_source'};
   const consistency=evaluateDataConsistency(row.payload);
@@ -35,7 +38,7 @@ export function priceFromSnapshot(row,asset,{now, maxAgeMs=110*60_000}={}) {
   const f=extractLearningFeatures(row.payload).assets?.[asset];
   const price=num(f?.price_usd);
   if(!(price>0))return {valid:false,why:'price_missing'};
-  return {valid:true,priceUsd:price,source,observedAt:new Date(observed).toISOString(),
+  return {valid:true,priceUsd:price,source,observedAt:new Date(asOf).toISOString(),
     pct24h:num(f?.pct_24h),pct7d:num(f?.pct_7d),
     spot:num(f?.spot_confirmation),trap:num(f?.trap_risk),
     fundamentalQuality:num(f?.fundamental_quality),fundamentalConfirmation:f?.fundamental_confirmation||null};
@@ -72,7 +75,7 @@ export function issueProspectiveForecast({currentRow,previousRow=null,now=new Da
   const observed=iso(currentRow.generated_at);
   if(observed==null || observed>nowMs)fail('source_from_future');
   const embedded=iso(currentRow.payload?.generated_at);
-  if(embedded!=null&& (embedded>nowMs || embedded>observed))fail('embedded_data_from_future');
+  if(embedded!=null && embedded>nowMs)fail('embedded_data_from_future');
   const verdict=evaluateForwardRules({currentRow,previousRow,now:new Date(nowMs)});
   const assets={};
   for(const asset of ASSETS) {
@@ -125,8 +128,11 @@ export function settleProspectiveForecast({forecast,asset,horizon,observedRow=nu
   let observed=null;
   if(observedRow) {
     const rowMs=iso(observedRow.generated_at);
-    if(rowMs==null||rowMs<due||rowMs>due+maxOutcomeLagMs||rowMs>nowMs)fail('invalid_outcome_timestamp');
-    observed=priceFromSnapshot(observedRow,asset,{now:rowMs,maxAgeMs:1});
+    const embeddedMs=iso(observedRow.payload?.generated_at);
+    if(rowMs==null)fail('invalid_outcome_timestamp');
+    const effectiveMs=Math.max(rowMs,embeddedMs??rowMs);
+    if(effectiveMs<due||effectiveMs>due+maxOutcomeLagMs||effectiveMs>nowMs)fail('invalid_outcome_timestamp');
+    observed=priceFromSnapshot(observedRow,asset,{now:effectiveMs,maxAgeMs:1});
   }
   if(!observed?.valid && nowMs<due+maxOutcomeLagMs)return null;
   if(!observed?.valid || !(p>0)) {
