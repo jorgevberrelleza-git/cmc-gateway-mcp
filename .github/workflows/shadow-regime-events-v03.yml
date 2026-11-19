@@ -1,0 +1,78 @@
+name: Shadow Time Machine - regimes and IPO event study v0.3
+on:
+  pull_request:
+    paths:
+      - 'src/simulator/**'
+      - 'scripts/learning-regime*'
+      - '.github/workflows/shadow-regime-events-v03.yml'
+      - 'package.json'
+      - 'docs/shadow-time-machine.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  hermetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      LEARNING_EXECUTION_ENABLED: 'false'
+      LEARNING_REASONING_ENABLED: 'false'
+      LEARNING_REASONING_WEB_SEARCH: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check src/simulator/time-machine.mjs
+          node --check src/simulator/regime-policy.mjs
+          node --check src/simulator/regime-lab.mjs
+          node --check src/simulator/event-study.mjs
+          node --check scripts/learning-regime-lab.mjs
+          node --check scripts/learning-regime-event-selftest.mjs
+      - name: Future-leak and portfolio isolation selftests
+        run: npm run learning:regime:selftest
+      - name: Selection and retrospective test, SYNTHETIC prices
+        run: |
+          node scripts/learning-regime-lab.mjs --demo --stage=select
+          node scripts/learning-regime-lab.mjs --demo --stage=test
+          node scripts/learning-regime-lab.mjs --demo --stage=event --event=SPACEX_IPO_20260612
+          node scripts/learning-regime-lab.mjs --demo --stage=event --event=ANTHROPIC_IPO_20261119
+      - name: Save synthetic test reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-regime-synthetic-v03
+          path: |
+            artifacts/time-machine/regime-*.json
+            artifacts/time-machine/event-*.json
+          retention-days: 14
+  historical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LEARNING_EXECUTION_ENABLED: 'false'
+      LEARNING_REASONING_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch independent historical BTC ADA AAVE prices
+        run: python3 scripts/learning-time-machine-fetch.py --start=2021-01 --end=2026-10 --interval=1d
+      - name: Train/regime validation ONLY through 2025
+        run: node scripts/learning-regime-lab.mjs --manifest=manifest.json --root=data/time-machine --stage=select
+      - name: Research-only retrospective test 2026
+        run: node scripts/learning-regime-lab.mjs --manifest=manifest.json --root=data/time-machine --stage=test
+      - name: SpaceX 2026-06-12 observational study
+        run: node scripts/learning-regime-lab.mjs --manifest=manifest.json --root=data/time-machine --stage=event --event=SPACEX_IPO_20260612
+      - name: Anthropic pending future data check
+        run: node scripts/learning-regime-lab.mjs --manifest=manifest.json --root=data/time-machine --stage=event --event=ANTHROPIC_IPO_20261119
+      - name: Save research reports only; never market source files or tokens
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-regimes-events-real-v03
+          path: |
+            artifacts/time-machine/regime-*.json
+            artifacts/time-machine/event-*.json
+          retention-days: 14
