@@ -63,7 +63,9 @@ try {
       const outcomes={};
       let wait=false;
       for(const asset of ASSETS){
-        const found=future.find(v=>priceFromSnapshot(v,asset,{now:Date.parse(v.generated_at),maxAgeMs:1}).valid)||null;
+        const found=future.find(v=>{const rowMs=Date.parse(v.generated_at);const nestedMs=Date.parse(v.payload?.generated_at||'');
+          return priceFromSnapshot(v,asset,{now:Math.max(rowMs,Number.isFinite(nestedMs)?nestedMs:rowMs),maxAgeMs:1}).valid;
+        })||null;
         const result=settleProspectiveForecast({
           forecast:f,asset,horizon:h.id,observedRow:found,now
         });
