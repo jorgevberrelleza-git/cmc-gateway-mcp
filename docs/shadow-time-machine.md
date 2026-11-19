@@ -64,3 +64,39 @@ Commands, with the same verified Binance local manifest:
 The first command produces artifacts/time-machine/walkforward-policy-lock.json. The second refuses changed historical pretest data or tampered lock and produces artifacts/time-machine/walkforward-retrospective-2026.json. CI runs the two-stage process on a synthetic fixture and full verified historical data.
 
 The model has selected among fixed rules; this is **hyperparameter optimization**, not machine learning weights, reinforcement learning, adaptive online learning, or proof of net investment advantage. The simulator remains completely disconnected from the hourly production path, Bitso credentials, external APIs, real money, and any self-modifying policy deployment.
+
+
+## Phase v0.3 — market regimes + IPO retrospective research (offline)
+
+The NEW module is not enabled by Shadow hourly cron or Bitso. It uses a separate research-only CLI, no API keys, no database access, no capital movement, no paid model calls.
+
+### Classification (on CLOSED bars only)
+BTC daily history up to observation time exclusively provides leading context for BTC/ADA/AAVE:
+- UNKNOWN: insufficient 90-200 closed BTC daily bars -> HOLD, not bullish by default.
+- SHOCK: severe 10-day decline, or high realized volatility with negative 10-day returns -> defensive exit simulated.
+- BEAR: BTC below slow moving-average trend or severely negative 30-day return -> simulated exit.
+- BULL: BTC above slow trend, fast above slow, momentum positive, volatility below shock threshold -> check asset-specific momentum before buying.
+- SIDEWAYS: mixed conditions -> no new entries; trim only weakening existing positions.
+
+Four predetermined regime parameter sets compete with two SMA reference policies. Risk-on is never inferred from an IPO announcement. No self-trained neural network, Claude API, or on-line strategy promotion is operating.
+
+### Chronological evaluation
+Each 2023/2024/2025 fold picks a candidate on PREVIOUS training history, then evaluates it on next untouched validation period (embargo seven days). The final 2026 candidate is locked from pre-2026 validation scores only, verified with checksum and rejected on changed pretest data. An event study of SpaceX is calculated separately and is not injected as a training feature. 2026 results remain retrospective — 2026 was already inspected in earlier v0.1/v0.2 experiments.
+
+Research gate: at least 2 of 3 positive validation years vs fixed HOLD, positive mean net alpha, nonnegative stressed alpha, worst validation maximum drawdown no worse than 40%; failure means reject, not automatic retraining or promotion.
+
+### SpaceX IPO event
+- Issuer/SEC confirms stock listed June 12 2026, SPCX: https://ir.spacex.com/updates/releases-details/2026/Space-Exploration-Technologies-Corp--Announces-Closing-of-Initial-Public-Offering-Including-Full-Exercise-of-Underwriters-Option-to-Purchase-Additional-Shares-2026-RgoR-Y1Vwh/
+- Nasdaq newsroom quotes first print at $150 around 10:15 a.m. ET: https://www.nasdaq.com/newsroom/spacex-ipo-rocket-company-launches-historic-ipo
+- Backtest computes BTC, ADA, AAVE post-event 1/3/7/30 UTC-day closes, compared with 8-20 spaced, pre-event-matched historical control windows, conditional on BTC 30d trend and 20d volatility.
+- **Noncausal**: no proof IPO caused crypto returns, no equity share simulation, no simulated Nvierto entry.
+- Anthropic Nov 19 2026 is recorded as INSUFFICIENT_OBSERVED_OUTCOMES in dataset ending Oct 31. Do not fabricate future returns. Official pricing: https://www.anthropic.com/news/anthropic-prices-initial-public-offering
+
+### Commands
+Run from a repository checkout with verified local Binance history:
+1. node scripts/learning-regime-lab.mjs --manifest=manifest.json --root=data/time-machine --stage=select
+2. node scripts/learning-regime-lab.mjs --manifest=manifest.json --root=data/time-machine --stage=test
+3. node scripts/learning-regime-lab.mjs --manifest=manifest.json --root=data/time-machine --stage=event --event=SPACEX_IPO_20260612
+4. npm run learning:regime:selftest
+
+Workflow: .github/workflows/shadow-regime-events-v03.yml; artifacts are under artifacts/time-machine. No additional Render instance is required. Priorities after v0.3: confirm real Bitso tradeable venue/spreads; prospective new market data; independent news timestamp feed and more matched events; produce a bounded offline error-review packet for optional AI critique (not per candle).
