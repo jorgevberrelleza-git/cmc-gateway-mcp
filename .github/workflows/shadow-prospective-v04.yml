@@ -1,0 +1,38 @@
+name: Shadow Prospective v0.4 - frozen future forecast
+on:
+  pull_request:
+    paths:
+      - 'src/learning/prospective-forecast-v04.mjs'
+      - 'scripts/learning-prospective-forecast-v04*'
+      - 'scripts/learning-hourly-cycle.mjs'
+      - '.github/workflows/shadow-prospective-v04.yml'
+      - 'package.json'
+      - 'docs/shadow-prospective-v04.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  forecast_contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      LEARNING_EXECUTION_ENABLED: 'false'
+      LEARNING_REASONING_ENABLED: 'false'
+      LEARNING_PROSPECTIVE_FORECAST_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read-only syntax checks
+        run: |
+          node --check src/learning/prospective-forecast-v04.mjs
+          node --check scripts/learning-prospective-forecast-v04.mjs
+          node --check scripts/learning-prospective-forecast-v04-selftest.mjs
+          node --check scripts/learning-hourly-cycle.mjs
+      - name: Existing forward-signal contract
+        run: node scripts/learning-prospective-rules-v03-selftest.mjs
+      - name: Precommit, horizon maturity and abstention tests
+        run: npm run learning:forecast:selftest
+      - name: Preexisting quote consistency contract
+        run: node scripts/learning-paprika-macro-unknown-selftest.mjs
