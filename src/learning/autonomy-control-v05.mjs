@@ -16,7 +16,15 @@ const stable = x => Array.isArray(x) ? x.map(stable) :
     : x;
 const digest=x=>crypto.createHash('sha256').update(JSON.stringify(stable(x))).digest('hex');
 const parseTs=x=>{const n=Date.parse(x||'');return Number.isFinite(n)?n:null;};
-const finiteNumber=x=>x==null?null:typeof x==='number'&&Number.isFinite(x)?x:null;
+const finiteNumber=x=>{
+  if(typeof x==='number')return Number.isFinite(x)?x:null;
+  // node-postgres returns SQL NUMERIC / DECIMAL values as strings by default.
+  // Accept only strictly numeric finite strings; never infer missing values.
+  if(typeof x==='string' && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(x.trim())){
+    const n=Number(x.trim());return Number.isFinite(n)?n:null;
+  }
+  return null;
+};
 const unique=xs=>[...new Set(xs)];
 const fail=m=>{throw Error('autonomy_control:'+m);};
 

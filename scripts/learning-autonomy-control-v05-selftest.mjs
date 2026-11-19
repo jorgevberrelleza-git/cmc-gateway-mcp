@@ -55,6 +55,18 @@ assert.equal(a.policyPromotionAllowed,false);
 assert.equal(a.realOrdersCreated,0);
 assert.equal(a.simulatedPortfolio.source,'SHADOW_MOCK_ONLY_NOT_BITSO');
 assert.equal(a.simulatedPortfolio.alphaProven,false);
+// PostgreSQL NUMERIC columns arrive as text; zero is VALID observed alpha,
+ // but it is not positive proof of edge.
+const pgNumericMark={
+  ...mark,total_value_usd:'10300.00',
+  alpha_vs_hodl_pct:'0.0000',drawdown_pct:'-7.50'
+};
+const pgResult=buildAutonomyControl({...data,latestPortfolioMark:pgNumericMark});
+assert.equal(pgResult.simulatedPortfolio.latestUsd,10300);
+assert.equal(pgResult.simulatedPortfolio.alphaVsHodlPct,0);
+assert.equal(pgResult.simulatedPortfolio.mockDrawdownPct,-7.5);
+assert.equal(pgResult.simulatedPortfolio.alphaProven,false);
+assert.ok(pgResult.blockers.includes('NO_DEMONSTRATED_PAPER_ALPHA_VS_HOLD'));
 assert.equal(a.assets.AAVE.venueVerified,false);
 assert.equal(a.assets.AAVE.allowedPositionChange,false);
 assert.equal(a.capabilities.historicalTimeMachine,'OFFLINE_VALIDATION_ONLY');
