@@ -70,7 +70,9 @@
     "learning:time-machine": "node scripts/learning-time-machine.mjs",
     "learning:time-machine:selftest": "node scripts/learning-time-machine-selftest.mjs",
     "learning:time-machine:walkforward": "node scripts/learning-time-machine-walkforward.mjs",
-    "learning:time-machine:walkforward:selftest": "node scripts/learning-time-machine-walkforward-selftest.mjs"
+    "learning:time-machine:walkforward:selftest": "node scripts/learning-time-machine-walkforward-selftest.mjs",
+    "learning:regime:lab": "node scripts/learning-regime-lab.mjs",
+    "learning:regime:selftest": "node scripts/learning-regime-event-selftest.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
