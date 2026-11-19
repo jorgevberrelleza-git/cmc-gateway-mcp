@@ -262,6 +262,27 @@ if(String(process.env.LEARNING_PROSPECTIVE_FORECAST_ENABLED||'false').toLowerCas
   };
 }
 
+// v0.5 AUTONOMY CONTROL PLANE. Integrates already-recorded v2/v3/v4
+// observations, mock performance and runtime health. Generates ONLY an
+// audit-hashed readiness committee report, never any market orders.
+// Runs after v4, so a same-cycle forecast can be included.
+let autonomyControlV05=null;
+if(String(process.env.LEARNING_AUTONOMY_CONTROL_ENABLED||'false').toLowerCase()==='true'
+    && collectorOk) {
+  const run=spawnSync('npm',['run','learning:autonomy:control'],{
+    encoding:'utf8',env:process.env,timeout:28000,maxBuffer:1024*1024
+  });
+  const line=String(run.stdout||'').split(/\r?\n/)
+    .find(x=>x.startsWith('SHADOW_AUTONOMY_V05='))||null;
+  autonomyControlV05={
+    attempted:true,ok:run.status===0&&Boolean(line),status:run.status,
+    summary:line?line.slice(0,14000):null,
+    stderr_tail:String(run.stderr||'').trim().slice(-1200),
+    orders_created:0,portfolio_ledger_modified:false,
+    execution_enabled:false,real_money_ready:false
+  };
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
@@ -318,6 +339,7 @@ console.log(JSON.stringify({
   defensive_research: defensiveResearch,
   forward_rules_v03: forwardRulesV03,
   prospective_forecast_v04: prospectiveV04,
+  autonomy_control_v05: autonomyControlV05,
   groq_canary: groqCanary,
   execution_enabled: false
 }, null, 2));
