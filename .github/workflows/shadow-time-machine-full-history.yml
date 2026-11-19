@@ -1,8 +1,6 @@
 name: Shadow Time Machine - full public history research
 on:
-  push:
-    branches:
-      - feature/shadow-time-machine-full-history-20261118
+  pull_request:
     paths:
       - '.github/workflows/shadow-time-machine-full-history.yml'
   workflow_dispatch:
