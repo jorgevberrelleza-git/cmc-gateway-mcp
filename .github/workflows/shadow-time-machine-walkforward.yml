@@ -1,0 +1,65 @@
+name: Shadow Time Machine - walk-forward v0.2
+on:
+  pull_request:
+    paths:
+      - 'src/simulator/**'
+      - 'scripts/learning-time-machine-walkforward*'
+      - '.github/workflows/shadow-time-machine-walkforward.yml'
+      - 'package.json'
+      - 'docs/shadow-time-machine.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated_unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      LEARNING_EXECUTION_ENABLED: 'false'
+      LEARNING_REASONING_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check src/simulator/walk-forward.mjs
+          node --check scripts/learning-time-machine-walkforward.mjs
+          node --check scripts/learning-time-machine-walkforward-selftest.mjs
+      - name: Pretest isolation, lock integrity, and 2026 mutation test
+        run: node scripts/learning-time-machine-walkforward-selftest.mjs
+      - name: Separate selection from test on synthetic sample
+        run: |
+          node scripts/learning-time-machine-walkforward.mjs --demo --stage=select
+          node scripts/learning-time-machine-walkforward.mjs --demo --stage=test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shadow-walkforward-synthetic-v02
+          path: artifacts/time-machine/walkforward-*.json
+          retention-days: 14
+
+  historical_walkforward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LEARNING_EXECUTION_ENABLED: 'false'
+      LEARNING_REASONING_ENABLED: 'false'
+      LEARNING_REASONING_WEB_SEARCH: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Historical Binance SPOT 2021 through Oct 2026, official checksums
+        run: python3 scripts/learning-time-machine-fetch.py --start=2021-01 --end=2026-10 --interval=1d
+      - name: Select rule ONLY using years 2021 through 2025
+        run: node scripts/learning-time-machine-walkforward.mjs --manifest=manifest.json --root=data/time-machine --stage=select
+      - name: Evaluate locked policy on retrospective 2026 test
+        run: node scripts/learning-time-machine-walkforward.mjs --manifest=manifest.json --root=data/time-machine --stage=test
+      - name: Upload locked selection and retrospective scorecard only
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-walkforward-2021-2026-v02
+          path: artifacts/time-machine/walkforward-*.json
+          retention-days: 14

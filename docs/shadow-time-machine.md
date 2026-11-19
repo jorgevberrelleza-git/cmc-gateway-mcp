@@ -39,3 +39,28 @@ v0.3: estudio de eventos SpaceX y Anthropic con mercado de acciones por sesión 
 v0.4: adaptador de observación al razonador Shadow, políticas candidatas, metaevaluador Claude/Groq opcional sobre RESÚMENES agregados, no cada día.
 v0.5: pruebas de estrés de liquidez, fallas operativas y validación prospectiva mock.
 Promoción a inversión real siempre queda bloqueada hasta pruebas independientes y aprobación humana.
+
+
+## Phase v0.2 — chronological walk-forward rule selection
+
+Three expanding historical folds evaluate a PREDECLARED grid of eight SMA fast/slow variants. No generative AI or autonomous policy rewriting takes place.
+
+| Fold | Training available to researcher | Validation (7-day embargo at boundary) |
+|---|---|---|
+| 1 | 2021–2022 | 2023-01-08 through 2023-12-31 |
+| 2 | 2021–2023 | 2024-01-08 through 2024-12-31 |
+| 3 | 2021–2024 | 2025-01-08 through 2025-12-31 |
+
+The best research candidate is chosen deterministically using validation years only: number of independent folds with positive alpha vs HOLD, then mean net alpha, drawdown relief, and lower trade count. All outcomes deduct 10 bps assumed fees and 5 bps slippage. Additional stress checks use 30 bps fees and 20 bps slippage. Failure to meet the predeclared gate marks the policy **RESEARCH_ONLY / VALIDATION_GATE_FAILED**; no policy is ever promoted.
+
+2026 is evaluated only **after** the prior selection is written to an immutable-hash-checked lock file. Its window is 2026-01-08 through 2026-10-31. Important: the 2026 market has already been viewed during earlier Time Machine experiments, so this retrospective test IS NOT a truly blind out-of-sample demonstration; only future, never-inspected prospective data can provide stronger independent evidence.
+
+Commands, with the same verified Binance local manifest:
+
+1. node scripts/learning-time-machine-walkforward.mjs --manifest=manifest.json --root=data/time-machine --stage=select
+2. node scripts/learning-time-machine-walkforward.mjs --manifest=manifest.json --root=data/time-machine --stage=test
+3. node scripts/learning-time-machine-walkforward-selftest.mjs
+
+The first command produces artifacts/time-machine/walkforward-policy-lock.json. The second refuses changed historical pretest data or tampered lock and produces artifacts/time-machine/walkforward-retrospective-2026.json. CI runs the two-stage process on a synthetic fixture and full verified historical data.
+
+The model has selected among fixed rules; this is **hyperparameter optimization**, not machine learning weights, reinforcement learning, adaptive online learning, or proof of net investment advantage. The simulator remains completely disconnected from the hourly production path, Bitso credentials, external APIs, real money, and any self-modifying policy deployment.
