@@ -27,3 +27,9 @@ The purpose is to make **genuinely prospective, timestamped research hypotheses*
 
 ## Research decision
 Only if prospective calls remain more accurate than predeclared naive benchmarks across many non-overlapping mature observations, with adequate quote quality, a meaningful non-abstention sample and net-cost-adjusted portfolio evidence, consider advancing to paper sizing. Real money stays blocked.
+
+
+## Integrity and baseline audit (Nov 20 enhancement; no change to frozen forecasts)
+Every hourly scorer now recomputes a cumulative audit over the existing, hashed **original** daily forecasts and verified, matured score rows. It displays **correct/incorrect**, abstentions and DATA_GAP_UNSCORED, realized return/direction for each recent asset × horizon, forecast version, and total coverage. A result with altered prediction, hash, due timestamp, observation timestamp, price math, status, hit bit or duplicate horizon row is **rejected**, never silently counted as an error or win. The audit comparison uses naive always-UP/DOWN/FLAT on **the same observed cases**, with explicit sample insufficiency flags. These naive baselines are reference measurements, not superior trading models; cross-asset and overlapping horizons are correlated and cannot be called independent samples. Data sources remain public USD proxy quotes, not Bitso-executable order prices.
+
+This enhancement **does not retrain, update thresholds, authorize orders, promote a strategy, or reset the live sample period**. It only makes the evidence auditable. It also logs HALT root-cause flags and latch state for the separate simulated broker. The forecast policy remains exactly v0.4, and the control plane remains fail-closed. The entire change has no new paid providers or deployments.
