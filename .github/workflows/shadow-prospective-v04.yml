@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'src/learning/prospective-forecast-v04.mjs'
+      - 'src/learning/prospective-audit-v04.mjs'
+      - 'scripts/learning-prospective-audit-v04-selftest.mjs'
       - 'scripts/learning-prospective-forecast-v04*'
       - 'scripts/learning-hourly-cycle.mjs'
       - '.github/workflows/shadow-prospective-v04.yml'
@@ -27,6 +29,8 @@ jobs:
       - name: Read-only syntax checks
         run: |
           node --check src/learning/prospective-forecast-v04.mjs
+          node --check src/learning/prospective-audit-v04.mjs
+          node --check scripts/learning-prospective-audit-v04-selftest.mjs
           node --check scripts/learning-prospective-forecast-v04.mjs
           node --check scripts/learning-prospective-forecast-v04-selftest.mjs
           node --check scripts/learning-hourly-cycle.mjs
@@ -34,5 +38,7 @@ jobs:
         run: node scripts/learning-prospective-rules-v03-selftest.mjs
       - name: Precommit, horizon maturity and abstention tests
         run: npm run learning:forecast:selftest
+      - name: Prospective outcomes audit, baselines and tamper resistance
+        run: node scripts/learning-prospective-audit-v04-selftest.mjs
       - name: Preexisting quote consistency contract
         run: node scripts/learning-paprika-macro-unknown-selftest.mjs

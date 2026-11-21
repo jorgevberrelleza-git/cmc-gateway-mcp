@@ -56,6 +56,7 @@ try {
     forecastIntegrity:report.forecastReceipt.integrity,
     forecastsIssued:report.forecastReceipt.available,
     matured24hPredictions:report.prospectiveScorecard['24h'].evaluated,
+    prospectiveScorecard:report.prospectiveScorecard,
     portfolioAlphaVsHoldPct:report.simulatedPortfolio.alphaVsHodlPct,
     marketImpactAttested:false,brokerOrderRouterConnected:false,
     evidenceBlockers:report.blockers,
