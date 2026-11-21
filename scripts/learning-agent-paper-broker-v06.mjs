@@ -104,6 +104,7 @@ try{
     globalStopReasons:report.globalStopReasons||[],
     haltLatched:report.paperAccount?.haltLatched??null,
     haltReason:report.paperAccount?.haltReason||null,
+    recoveryEvent:report.recoveryEvent?.type||null,
     paperCashUsd:report.paperAccount?.cashUsd??null,
     paperEquityUsd:report.paperAccount?.equityUsd??null,
     serializedStateTransaction:true,
