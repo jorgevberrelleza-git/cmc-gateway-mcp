@@ -33,10 +33,21 @@ async function krakenDaily(asset) {
   return rows.map(k => ({ t: k[0] * 1000, close: +k[4] }));
 }
 
+async function bitsoDepth(book) {
+  // Visible USD depth within 0.5% of mid on each side (aggregated public book).
+  const j = await getJson(`https://api.bitso.com/v3/order_book/?book=${book}&aggregate=true`);
+  if (!j.success) throw Error('order_book');
+  const bids = j.payload.bids.map(x => [+x.price, +x.amount]), asks = j.payload.asks.map(x => [+x.price, +x.amount]);
+  const mid = (bids[0][0] + asks[0][0]) / 2;
+  const sum = side => side.filter(([p]) => Math.abs(p / mid - 1) <= 0.005).reduce((t, [p, q]) => t + p * q, 0);
+  return { bid: sum(bids), ask: sum(asks) };
+}
 const now = new Date(), errors = [], unvalued = [];
 const assets = Object.keys(mandate);
-const postures = {}, quotes = {};
+const postures = {}, quotes = {}, refPrices = {}, depthUsd = {};
 for (const a of assets) {
+  try { refPrices[a] = await krakenLast(a === 'BTC' ? 'XBT' : a); } catch (e) { errors.push(`${a}:reference:${e.message}`); }
+  try { depthUsd[a] = await bitsoDepth(EXECUTOR_BOOKS[a]); } catch (e) { errors.push(`${a}:depth:${e.message}`); }
   try { postures[a] = trendPosture({ asset: a, candles: await krakenDaily(a), now, universe: assets }).posture; }
   catch (e) { postures[a] = 'ABSTAIN'; errors.push(`${a}:candles:${e.message}`); }
   try { quotes[a] = await bitsoTicker(EXECUTOR_BOOKS[a]); } catch (e) { errors.push(`${a}:quote:${e.message}`); }
@@ -81,7 +92,7 @@ try {
   const prevRow = (await db.query('select snapshot_id,asset_assessments from learning_shadow_v2_evaluations where strategy_version=$1 order by id desc limit 1', [EXECUTOR_VERSION])).rows[0];
   if (prevRow && String(prevRow.snapshot_id) === String(snap.id)) { duplicate = true; report = prevRow.asset_assessments.executor.report; }
   else {
-    const out = planMandate({ previous: prevRow?.asset_assessments?.executor?.state || null, mandate, postures, postureAt, balances, portfolioUsd, quotes, now });
+    const out = planMandate({ previous: prevRow?.asset_assessments?.executor?.state || null, mandate, postures, postureAt, balances, portfolioUsd, quotes, refPrices, depthUsd, now });
     report = { ...out.report, dataErrors: errors, unvaluedCurrencies: unvalued };
     const ins = await db.query(
       'insert into learning_shadow_v2_evaluations (snapshot_id,generated_at,strategy_version,regime,consistency,asset_assessments,external_research_trigger,execution_enabled) values ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,false) on conflict (snapshot_id,strategy_version) do nothing returning id',
