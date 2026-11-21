@@ -203,8 +203,32 @@ export function runAgentPaperCycle({
   // a price shock cannot execute an old buy and only then trigger HALT.
   let limits=quotesComplete?eligibleLimits(state,quotes,riskPolicy):
     {halt:true,reason:'missing_valid_market_quote',equityUsd:null,dayLossPct:null,drawdownPct:null};
+  // A transient quote outage means HALT THIS CYCLE, not a permanent
+  // loss-limit breach. Keep durable emergency latches only for verified
+  // incidents or independently calculated daily/drawdown loss limits.
+  const isCriticalBreach=limits.halt &&
+    (limits.reason==='daily_loss_limit'||limits.reason==='total_drawdown_limit');
+  let recoveryEvent=null;
+  if(state.haltLatched &&
+    state.haltReason==='RISK_LIMIT_REQUIRES_RESET:missing_valid_market_quote' &&
+    !globalEmergency && quotesComplete && !limits.halt &&
+    state.pending.length===0 && state.filledOrders===0 &&
+    SUPPORTED_ASSETS.every(a=>state.positions[a]===0) &&
+    Math.abs(state.cashUsd-state.initialUsd)<1e-7 &&
+    Math.abs(state.latestEquityUsd-state.initialUsd)<1e-7){
+    // Narrow, one-time repair of the previously incorrect PAPER-only latch.
+    // A live balance, active position, prior fill, loss, or official incident
+    // MUST NEVER be cleared automatically.
+    state.haltLatched=false;
+    state.haltReason=null;
+    recoveryEvent={
+      type:'LEGACY_QUOTE_GAP_FALSE_LATCH_REPAIRED_ZERO_EXPOSURE',
+      restoredAt:new Date(nowMs).toISOString(),
+      approvalScope:'PAPER_ONLY_NO_LIVE_ORDERS'
+    };
+  }
   let globalHalt=globalEmergency||!quotesComplete||limits.halt||state.haltLatched;
-  if(incidentState==='INCIDENT_VERIFIED'||limits.halt){
+  if(incidentState==='INCIDENT_VERIFIED'||isCriticalBreach){
     state.haltLatched=true;
     state.haltReason=incidentState==='INCIDENT_VERIFIED'?'OFFICIAL_INCIDENT_REQUIRES_RESET':
       'RISK_LIMIT_REQUIRES_RESET:'+String(limits.reason);
@@ -223,7 +247,8 @@ export function runAgentPaperCycle({
   state.pending=globalHalt?[]:unfilled; // all pending canceled on incident/data failure
   if(!globalHalt)limits=eligibleLimits(state,quotes,riskPolicy);
   globalHalt ||=limits.halt;
-  if(limits.halt){
+  if(limits.halt &&
+    (limits.reason==='daily_loss_limit'||limits.reason==='total_drawdown_limit')){
     state.haltLatched=true;
     state.haltReason='RISK_LIMIT_REQUIRES_RESET:'+String(limits.reason);
   }
@@ -288,7 +313,7 @@ export function runAgentPaperCycle({
        incidentState==='INCIDENT_VERIFIED'?'verified_incident':null,
        !quotesComplete?'missing_quote':null,limits.reason,
        state.haltLatched?'LATCHED_HALT_REQUIRES_MANUAL_RESET':null].filter(Boolean):[],
-    incidentState,assetDecisions:all,
+    incidentState,recoveryEvent,assetDecisions:all,
     submittedPaperIntents:commands,fills:filled,
     paperAccount:{
       initialUsd:state.initialUsd,cashUsd:state.cashUsd,positions:state.positions,

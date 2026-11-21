@@ -134,6 +134,41 @@ const incident=runAgentPaperCycle({control:c125,currentRow:s120,
 assert.equal(incident.status,'HALT');
 assert.equal(incident.fills.length,0);
 assert.equal(incident.paperAccount.haltLatched,true);
+// Temporary invalid source: fail closed for this cycle, but do NOT persist
+// a false "risk breach" forever. This was the real v0.6 HALT root cause.
+const unavailableQuote=snap(120,{source:'unverified_quote'});
+const unavailableControl=control(unavailableQuote,s60,125);
+const paused=runAgentPaperCycle({control:unavailableControl,currentRow:unavailableQuote,
+  previousState:baseline.state,now:new Date(iso(126))});
+assert.equal(paused.status,'HALT');
+assert.equal(paused.paperAccount.haltLatched,false);
+assert.equal(paused.fills.length,0);
+assert.ok(paused.globalStopReasons.includes('missing_valid_market_quote'));
+const restoredControl=control(s180,unavailableQuote,185);
+const restored=runAgentPaperCycle({control:restoredControl,currentRow:s180,
+  previousState:paused.state,now:new Date(iso(186))});
+assert.notEqual(restored.status,'HALT','a transient quote gap must not permanently disable paper research');
+assert.equal(restored.realOrdersCreated,0);
+
+// Narrow migration for the bug already persisted in the zero-exposure paper
+// account. This must never clear a latch when any exposure/fill exists.
+const legacy=structuredClone(paused.state);
+legacy.haltLatched=true;
+legacy.haltReason='RISK_LIMIT_REQUIRES_RESET:missing_valid_market_quote';
+const patched=runAgentPaperCycle({control:restoredControl,currentRow:s180,
+  previousState:legacy,now:new Date(iso(186))});
+assert.equal(patched.paperAccount.haltLatched,false);
+assert.equal(patched.recoveryEvent?.type,'LEGACY_QUOTE_GAP_FALSE_LATCH_REPAIRED_ZERO_EXPOSURE');
+assert.equal(patched.realOrdersCreated,0);
+const exposedLegacy=structuredClone(legacy);
+exposedLegacy.cashUsd=9900;
+exposedLegacy.positions.BTC=1;
+exposedLegacy.filledOrders=1;
+const notCleared=runAgentPaperCycle({control:restoredControl,currentRow:s180,
+  previousState:exposedLegacy,now:new Date(iso(186))});
+assert.equal(notCleared.status,'HALT');
+assert.equal(notCleared.paperAccount.haltLatched,true);
+assert.equal(notCleared.recoveryEvent,null);
 const altered=structuredClone(growth);altered.assets.BTC.researchPosture='OPERATE_PAPER';
 assert.throws(()=>runAgentPaperCycle({control:altered,currentRow:s60}),/unverified_control_audit/);
 assert.throws(()=>runAgentPaperCycle({control:growth,currentRow:s120}),/control_snapshot_mismatch/);
@@ -150,6 +185,8 @@ console.log('SHADOW_AGENT_PAPER_V06_SELFTEST='+JSON.stringify({
  modes:['HALT','DEFENSIVE','LIQUIDITY','OPERATE_PAPER'],
  buyIntentNextBarFilled:true,sellIntentNextBarFilled:true,
  spreadFeesSlippageApplied:true,duplicateProtected:true,
- incidentAndDrawdownKillSwitch:true,corruptControlRejected:true,
+ incidentAndDrawdownKillSwitch:true,transientQuotePauseWithoutPermanentLock:true,
+ legacyZeroExposureRepair:true,criticalLatchNeverAutoCleared:true,
+ corruptControlRejected:true,
  disabledRealOrders:true,brokerApiCalls:0,realOrders:0
 }));
