@@ -169,6 +169,24 @@ const notCleared=runAgentPaperCycle({control:restoredControl,currentRow:s180,
 assert.equal(notCleared.status,'HALT');
 assert.equal(notCleared.paperAccount.haltLatched,true);
 assert.equal(notCleared.recoveryEvent,null);
+// Regression (post-0177b06): a quote outage WHILE EXPOSED must only pause, and
+// a loss that materialises once quotes return must still latch a durable HALT.
+// Guards against the transient-pause path masking a real drawdown breach.
+const exposedPaused=runAgentPaperCycle({control:unavailableControl,currentRow:unavailableQuote,
+  previousState:structuredClone(paperHolding),now:new Date(iso(126))});
+assert.equal(exposedPaused.status,'HALT');
+assert.equal(exposedPaused.paperAccount.haltLatched,false);
+assert.equal(exposedPaused.fills.length,0);
+const crash=snap(180,{price:40});
+const crashControl=control(crash,unavailableQuote,185);
+const crashAfterGap=runAgentPaperCycle({control:crashControl,currentRow:crash,
+  previousState:exposedPaused.state,now:new Date(iso(186))});
+assert.equal(crashAfterGap.status,'HALT');
+assert.equal(crashAfterGap.paperAccount.haltLatched,true,
+  'loss revealed after a quote gap MUST latch');
+assert.match(crashAfterGap.paperAccount.haltReason||'',/daily_loss_limit|total_drawdown_limit/);
+assert.equal(crashAfterGap.recoveryEvent,null);
+assert.equal(crashAfterGap.realOrdersCreated,0);
 const altered=structuredClone(growth);altered.assets.BTC.researchPosture='OPERATE_PAPER';
 assert.throws(()=>runAgentPaperCycle({control:altered,currentRow:s60}),/unverified_control_audit/);
 assert.throws(()=>runAgentPaperCycle({control:growth,currentRow:s120}),/control_snapshot_mismatch/);
