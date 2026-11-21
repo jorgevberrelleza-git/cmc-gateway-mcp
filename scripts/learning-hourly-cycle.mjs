@@ -15,7 +15,13 @@ if (!config.ready_for_shadow) {
   process.exit(2);
 }
 
-const steps = [
+// SHADOW_LEAN_MODE=true: run only what feeds decisions (collector snapshot for the
+// cycle id, trend ledger v0.7, executor). Research modules stay in the codebase and
+// come back by removing the flag. Collector skips the ~18s/asset Bitso WebSocket
+// microstructure capture and DefiLlama, which no decision path consumes.
+const LEAN = String(process.env.SHADOW_LEAN_MODE || 'false').toLowerCase() === 'true';
+const LEAN_ENV = LEAN ? { ...process.env, LEARNING_INCLUDE_MICROSTRUCTURE: 'false', DEFILLAMA_ENABLED: 'false' } : process.env;
+const allSteps = [
   ['collector', ['run', 'learning:collector']],
   ['shadow-v2-bootstrap', ['run', 'learning:v2:bootstrap']],
   ['shadow-v2', ['run', 'learning:v2:latest']],
@@ -27,12 +33,13 @@ const steps = [
   ['watchdog', ['run', 'learning:watchdog']],
   ['report', ['run', 'learning:report']]
 ];
+const steps = LEAN ? allSteps.filter(([name]) => name === 'collector') : allSteps;
 
 const cycleStarted = new Date();
 const results = [];
 for (const [name, args] of steps) {
   const stepStarted = Date.now();
-  const run = spawnSync('npm', args, { encoding: 'utf8', env: process.env });
+  const run = spawnSync('npm', args, { encoding: 'utf8', env: LEAN_ENV });
   const durationMs = Date.now() - stepStarted;
   results.push({
     name,
@@ -80,7 +87,7 @@ try {
 const ok = coreOk && telemetryError == null;
 
 let v02OneShot = null;
-if (String(process.env.LEARNING_V02_RUN_ONCE || '').toLowerCase() === 'true') {
+if (String((LEAN?undefined:process.env.LEARNING_V02_RUN_ONCE) || '').toLowerCase() === 'true') {
   const run = spawnSync('npm', ['run', 'learning:v02:outcomes'], {
     encoding: 'utf8',
     env: { ...process.env, LEARNING_V02_OUTCOME_HOURS: process.env.LEARNING_V02_OUTCOME_HOURS || '96' }
@@ -101,7 +108,7 @@ if (String(process.env.LEARNING_V02_RUN_ONCE || '').toLowerCase() === 'true') {
  * calls external research, or places orders.
  */
 let v02DailyReport = null;
-if (String(process.env.LEARNING_V02_DAILY_REPORT || 'false').toLowerCase() === 'true'
+if (String((LEAN?undefined:process.env.LEARNING_V02_DAILY_REPORT) || 'false').toLowerCase() === 'true'
     && cycleStarted.getUTCHours() === 0
     && v02OneShot == null) {
   const run = spawnSync('npm', ['run', 'learning:v02:outcomes'], {
@@ -130,7 +137,7 @@ if (String(process.env.LEARNING_V02_DAILY_REPORT || 'false').toLowerCase() === '
  * failure is reported explicitly as a geo sidecar error.
  */
 let geoScan = null;
-if (String(process.env.LEARNING_GEO_ENABLED || 'false').toLowerCase() === 'true'
+if (String((LEAN?undefined:process.env.LEARNING_GEO_ENABLED) || 'false').toLowerCase() === 'true'
     && cycleStarted.getUTCHours() % 3 === 0
     && collectorOk) {
   const geo = spawnSync('npm', ['run','learning:geo:scan'],{
@@ -152,7 +159,7 @@ if (String(process.env.LEARNING_GEO_ENABLED || 'false').toLowerCase() === 'true'
 
 /* GEO v0.2 is an optional, read-only companion to the v0.1 scan. */
 let geoV02Scan=null;
-if (String(process.env.LEARNING_GEO_V02_ENABLED || 'false').toLowerCase()==='true'
+if (String((LEAN?undefined:process.env.LEARNING_GEO_V02_ENABLED) || 'false').toLowerCase()==='true'
     && geoScan?.attempted === true
     && collectorOk) {
   const run=spawnSync('npm',['run','learning:geo:v02:scan'],{
@@ -174,7 +181,7 @@ if (String(process.env.LEARNING_GEO_V02_ENABLED || 'false').toLowerCase()==='tru
 
 // Fixed 4h walk-forward benchmark, next-day sidecar only, no paid/market calls.
 let walkforwardReport=null;
-if (String(process.env.LEARNING_WALKFORWARD_REPORT_ENABLED||'false').toLowerCase()==='true'
+if (String((LEAN?undefined:process.env.LEARNING_WALKFORWARD_REPORT_ENABLED)||'false').toLowerCase()==='true'
     && cycleStarted.getUTCHours()===1 && collectorOk) {
   const r=spawnSync('npm',['run','learning:walkforward:report'],{
     encoding:'utf8',env:process.env,timeout:25000,maxBuffer:1024*1024
@@ -192,7 +199,7 @@ if (String(process.env.LEARNING_WALKFORWARD_REPORT_ENABLED||'false').toLowerCase
 // Official CMC skills marketplace playbook: once daily, read the stored
 // evidence and select research priorities with ZERO additional network calls.
 let skillsDaily=null;
-if(String(process.env.LEARNING_SKILLS_DAILY_ENABLED||'false').toLowerCase()==='true'
+if(String((LEAN?undefined:process.env.LEARNING_SKILLS_DAILY_ENABLED)||'false').toLowerCase()==='true'
     && cycleStarted.getUTCHours()===2 && collectorOk){
   const run=spawnSync('npm',['run','learning:skills:daily'],{
     encoding:'utf8',env:process.env,timeout:23000,maxBuffer:1024*1024
@@ -209,7 +216,7 @@ if(String(process.env.LEARNING_SKILLS_DAILY_ENABLED||'false').toLowerCase()==='t
 // Research-only capital preservation comparison. Runs once daily using
 // already saved snapshots, NOT the production portfolio ledger.
 let defensiveResearch=null;
-if(String(process.env.LEARNING_DEFENSIVE_REPORT_ENABLED||'false').toLowerCase()==='true'
+if(String((LEAN?undefined:process.env.LEARNING_DEFENSIVE_REPORT_ENABLED)||'false').toLowerCase()==='true'
   && cycleStarted.getUTCHours()===3 && collectorOk) {
   const run=spawnSync('npm',['run','learning:defensive:paper:report'],{
     encoding:'utf8',env:process.env,timeout:25000,maxBuffer:1024*1024
@@ -227,7 +234,7 @@ if(String(process.env.LEARNING_DEFENSIVE_REPORT_ENABLED||'false').toLowerCase()=
 // exactly once, with only the prior already-observed snapshot. No positions,
 // paper orders, accounts, remote APIs or paid reasoning are accessed.
 let forwardRulesV03=null;
-if(String(process.env.LEARNING_RULES_V03_FORWARD_ENABLED||'false').toLowerCase()==='true'
+if(String((LEAN?undefined:process.env.LEARNING_RULES_V03_FORWARD_ENABLED)||'false').toLowerCase()==='true'
    && collectorOk) {
  const run=spawnSync('npm',['run','learning:rules:v03:forward'],{
    encoding:'utf8',env:process.env,timeout:20000,maxBuffer:1024*1024
@@ -247,7 +254,7 @@ if(String(process.env.LEARNING_RULES_V03_FORWARD_ENABLED||'false').toLowerCase()
 // outcome scoring (append-only). Reads snapshots already captured by this
 // cycle; no broker, remote API, AI call, portfolio mutation or cash use.
 let prospectiveV04=null;
-if(String(process.env.LEARNING_PROSPECTIVE_FORECAST_ENABLED||'false').toLowerCase()==='true'
+if(String((LEAN?undefined:process.env.LEARNING_PROSPECTIVE_FORECAST_ENABLED)||'false').toLowerCase()==='true'
     && collectorOk) {
   const run=spawnSync('npm',['run','learning:forecast:forward'],{
     encoding:'utf8',env:process.env,timeout:28000,maxBuffer:1024*1024
@@ -267,7 +274,7 @@ if(String(process.env.LEARNING_PROSPECTIVE_FORECAST_ENABLED||'false').toLowerCas
 // audit-hashed readiness committee report, never any market orders.
 // Runs after v4, so a same-cycle forecast can be included.
 let autonomyControlV05=null;
-if(String(process.env.LEARNING_AUTONOMY_CONTROL_ENABLED||'false').toLowerCase()==='true'
+if(String((LEAN?undefined:process.env.LEARNING_AUTONOMY_CONTROL_ENABLED)||'false').toLowerCase()==='true'
     && collectorOk) {
   const run=spawnSync('npm',['run','learning:autonomy:control'],{
     encoding:'utf8',env:process.env,timeout:28000,maxBuffer:1024*1024
@@ -288,7 +295,7 @@ if(String(process.env.LEARNING_AUTONOMY_CONTROL_ENABLED||'false').toLowerCase()=
 // paper-only fills, fee/spread/slippage proxy and loss-based HALT.
 // No access to Bitso private endpoints or real-money routing.
 let paperBrokerV06=null;
-if(String(process.env.LEARNING_AGENT_PAPER_BROKER_ENABLED||'false').toLowerCase()==='true'
+if(String((LEAN?undefined:process.env.LEARNING_AGENT_PAPER_BROKER_ENABLED)||'false').toLowerCase()==='true'
     && collectorOk && autonomyControlV05?.ok===true){
   const run=spawnSync('npm',['run','learning:agent:paper'],{
     encoding:'utf8',env:process.env,timeout:28000,maxBuffer:1024*1024
@@ -340,7 +347,7 @@ if(String(process.env.LEARNING_EXECUTOR_DRYRUN_ENABLED||process.env.LEARNING_EXE
 
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
-if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
+if (String((LEAN?undefined:process.env.LEARNING_EVENT_NOISE_AUDIT) || 'false').toLowerCase()==='true'
     && cycleStarted.getUTCHours()===0 && collectorOk) {
   const run=spawnSync('npm',['run','learning:event:audit'],{
     encoding:'utf8',env:process.env,timeout:20000,maxBuffer:1024*1024
@@ -358,7 +365,7 @@ if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='t
 // Isolated synthetic Groq canary: explicit opt-in only, at most once per UTC day.
 // Never sends portfolio data, affects decisions, or changes cycle status.
 let groqCanary=null;
-if(String(process.env.LEARNING_GROQ_CANARY_ENABLED||'false').toLowerCase()==='true'
+if(String((LEAN?undefined:process.env.LEARNING_GROQ_CANARY_ENABLED)||'false').toLowerCase()==='true'
    && cycleStarted.getUTCHours()===4 && collectorOk){
  const probe=spawnSync('node',['scripts/learning-groq-canary.mjs'],{
    encoding:'utf8',env:process.env,timeout:16000,maxBuffer:256*1024
@@ -401,4 +408,16 @@ console.log(JSON.stringify({
   groq_canary: groqCanary,
   execution_enabled: false
 }, null, 2));
+// One compact line with everything a supervisor needs (searchable in logs).
+const parseLine = (x, prefix) => { try { return x?.summary ? JSON.parse(x.summary.slice(prefix.length)) : null; } catch { return null; } };
+const led = parseLine(trendLedgerV07, 'SHADOW_TREND_LEDGER_V07=');
+const exe = parseLine(executorDryRun, 'SHADOW_EXECUTOR=');
+console.log('SHADOW_DECISION_SUMMARY=' + JSON.stringify({
+  at: cycleCompleted.toISOString(), lean: LEAN, cycle: cycleStatus,
+  durationS: Math.round((Date.now() - cycleStarted.getTime()) / 1000),
+  postures: led?.postures?.map(p => `${p.asset}:${p.posture}:${p.distancePct ?? 'na'}%`) || null,
+  paperLedger: led ? { action: led.action, equityUsd: led.marks?.equityUsd ?? null, ddPct: led.marks?.drawdownPct ?? null, wouldHalt: led.wouldHalt, dataErrors: led.dataErrors?.length ?? 0 } : (trendLedgerV07 ? { ok: false } : null),
+  executor: exe ? { action: exe.action, why: exe.why, wouldSend: exe.wouldSend, mandateUsd: exe.mandate?.valueUsd ?? null, mandateDdPct: exe.mandate?.drawdownPct ?? null, capUsd: exe.mandate?.capUsd ?? null, sleeves: exe.sleeves, stopped: exe.stopped, dataErrors: exe.dataErrors, unvalued: exe.unvaluedCurrencies } : (executorDryRun ? { ok: false, stderr: executorDryRun.stderr_tail?.slice(-300) } : null),
+  realOrders: 0, executionEnabled: false
+}));
 if (!ok) process.exitCode = 1;
