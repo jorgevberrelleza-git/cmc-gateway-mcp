@@ -1,0 +1,68 @@
+name: Shadow Agent Paper Broker v0.6 - zero live orders
+on:
+  pull_request:
+    paths:
+      - 'src/learning/agent-broker-paper-v06.mjs'
+      - 'scripts/learning-agent-paper-broker-v06*'
+      - 'scripts/learning-paper-broker-db-lock-selftest.mjs'
+      - 'scripts/learning-hourly-cycle.mjs'
+      - '.github/workflows/shadow-broker-paper-v06.yml'
+      - 'package.json'
+      - 'docs/shadow-agent-paper-broker-v06.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deterministic_paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      LEARNING_EXECUTION_ENABLED: 'false'
+      LEARNING_REASONING_ENABLED: 'false'
+      LEARNING_AGENT_PAPER_BROKER_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inspect syntax
+        run: |
+          node --check src/learning/agent-broker-paper-v06.mjs
+          node --check scripts/learning-agent-paper-broker-v06.mjs
+          node --check scripts/learning-agent-paper-broker-v06-selftest.mjs
+          node --check scripts/learning-hourly-cycle.mjs
+      - name: Autonomous risk committee baseline
+        run: npm run learning:autonomy:selftest
+      - name: Simulated state machine, next-quote execution and safety
+        run: npm run learning:agent:paper:selftest
+      - name: Existing future forecast validity contract
+        run: npm run learning:forecast:selftest
+
+  serialized_account:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testing_only_no_real_secrets
+          POSTGRES_DB: shadow_lock_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d shadow_lock_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pg in isolated CI runner
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify real PostgreSQL exclusive paper journal lock
+        env:
+          PAPER_LOCK_TEST_DATABASE_URL: postgres://postgres:testing_only_no_real_secrets@localhost:5432/shadow_lock_test
+        run: node scripts/learning-paper-broker-db-lock-selftest.mjs

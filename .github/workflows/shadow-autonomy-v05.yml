@@ -1,0 +1,41 @@
+name: Shadow autonomous control plane v0.5 - no trade
+on:
+  pull_request:
+    paths:
+      - 'src/learning/autonomy-control-v05.mjs'
+      - 'scripts/learning-autonomy-control-v05*'
+      - 'scripts/learning-hourly-cycle.mjs'
+      - 'docs/shadow-autonomy-v05.md'
+      - '.github/workflows/shadow-autonomy-v05.yml'
+      - 'package.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline_contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      LEARNING_EXECUTION_ENABLED: 'false'
+      LEARNING_REASONING_ENABLED: 'false'
+      LEARNING_PROSPECTIVE_FORECAST_ENABLED: 'false'
+      LEARNING_AUTONOMY_CONTROL_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Source syntax
+        run: |
+          node --check src/learning/autonomy-control-v05.mjs
+          node --check scripts/learning-autonomy-control-v05.mjs
+          node --check scripts/learning-autonomy-control-v05-selftest.mjs
+          node --check scripts/learning-hourly-cycle.mjs
+      - name: Precommitted prediction validity
+        run: npm run learning:forecast:selftest
+      - name: Integrated fail-closed capital-readiness committee
+        run: npm run learning:autonomy:selftest
+      - name: Existing risk and venue policy
+        run: node scripts/learning-prospective-rules-v03-selftest.mjs
+      - name: No market-context false inference
+        run: node scripts/learning-paprika-macro-unknown-selftest.mjs
