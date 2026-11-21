@@ -15,11 +15,14 @@
 // idempotent ids. mode is DRY_RUN: nothing is ever sent.
 import crypto from 'node:crypto';
 
-export const EXECUTOR_VERSION = 'shadow_executor_v0.8.0';
+export const EXECUTOR_VERSION = 'shadow_executor_v0.8.1';
 export const EXECUTOR_BOOKS = Object.freeze({ BTC: 'btc_usd', ETH: 'eth_usd', ADA: 'ada_usd' });
 export const EXECUTOR_POLICY = Object.freeze({
   maxPortfolioFraction: 0.5, stopDrawdownPct: 20, takeProfitPct: 30, rebuyPullbackPct: 15,
-  maxOrdersPerDay: 6, minOrderUsd: 15, maxSpreadPct: 1.0, maxPostureAgeHours: 3, takerFee: 0.0036
+  maxOrdersPerDay: 6, minOrderUsd: 15, maxSpreadPct: 1.0, maxPostureAgeHours: 3, takerFee: 0.0036,
+  // Pre-trade controls (RTS 6 art. 15 style): reference-price collar, max order value,
+  // depth-aware size, and an execution throttle that latches a halt.
+  priceCollarPct: 2.0, maxOrderUsd: 2500, maxDepthShare: 0.5, maxExecutions7d: 8
 });
 const sha = x => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const r2 = x => Math.round(x * 100) / 100;
@@ -30,6 +33,7 @@ export function checkPolicy(p) {
   if (!(p.stopDrawdownPct > 0 && p.stopDrawdownPct <= 30)) fail('bad_stop');
   if (!(p.takeProfitPct >= 10 && p.rebuyPullbackPct > 0 && p.rebuyPullbackPct < p.takeProfitPct)) fail('bad_take_profit');
   if (!(p.maxOrdersPerDay >= 1 && p.maxOrdersPerDay <= 10)) fail('bad_daily_cap');
+  if (!(p.priceCollarPct > 0 && p.priceCollarPct <= 5 && p.maxOrderUsd > 0 && p.maxDepthShare > 0 && p.maxDepthShare <= 1 && p.maxExecutions7d >= 2)) fail('bad_pretrade_controls');
 }
 export function parseMandate(raw) {
   let m; try { m = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { fail('mandate_not_json'); }
@@ -47,7 +51,7 @@ export function parseMandate(raw) {
 export function initialExecutorState(mandate, now = new Date()) {
   return { version: EXECUTOR_VERSION, createdAt: new Date(+now).toISOString(), mandate,
     sleeves: Object.fromEntries(Object.entries(mandate).map(([a, u]) => [a, { units: u, usd: 0, phase: 'FULL', entry: null, tpPx: null }])),
-    peakUsd: null, stopped: false, stopReason: null, day: null, ordersToday: 0, plannedOrders: 0, realOrdersSent: 0 };
+    peakUsd: null, stopped: false, stopReason: null, throttled: false, executions: [], day: null, ordersToday: 0, plannedOrders: 0, realOrdersSent: 0 };
 }
 
 function validQuote(q, maxSpreadPct) { return q && q.bid > 0 && q.ask >= q.bid && 100 * (q.ask - q.bid) / q.bid <= maxSpreadPct; }
@@ -57,7 +61,7 @@ function validQuote(q, maxSpreadPct) { return q && q.bid > 0 && q.ask >= q.bid &
  * @param balances {usd:{available,total}, btc:{total}, ada:{total}, ...}
  * @param portfolioUsd total value of the owner's portfolio (all assets incl. non-Bitso), for the cap
  */
-export function planMandate({ previous, mandate, postures, postureAt, balances, portfolioUsd, quotes, now = new Date(), policy = EXECUTOR_POLICY, dryRun = true }) {
+export function planMandate({ previous, mandate, postures, postureAt, balances, portfolioUsd, quotes, refPrices = null, depthUsd = null, now = new Date(), policy = EXECUTOR_POLICY, dryRun = true }) {
   if (!dryRun) fail('live_mode_not_available_in_this_build');
   checkPolicy(policy);
   const s = structuredClone(previous || initialExecutorState(mandate, now));
@@ -75,6 +79,14 @@ export function planMandate({ previous, mandate, postures, postureAt, balances, 
   if (!balances || !balances.usd) return hold('balances_unavailable');
   if (!assets.every(a => validQuote(quotes?.[a], policy.maxSpreadPct))) return hold('invalid_quote');
   const mid = a => (quotes[a].bid + quotes[a].ask) / 2;
+  // Price collar: the venue mid must agree with an independent reference (Kraken).
+  for (const a of assets) {
+    const ref = Number(refPrices?.[a]);
+    if (!(ref > 0)) return hold('reference_price_missing:' + a);
+    if (Math.abs(mid(a) / ref - 1) * 100 > policy.priceCollarPct) return hold('price_collar_breach:' + a);
+  }
+  s.executions = (s.executions || []).filter(t => +now - Date.parse(t) < 7 * 86_400_000);
+  if (s.throttled) return hold('execution_throttle_latched_requires_owner_reset');
   // Reconciliation. LIVE: Shadow's simulated sleeve must exist in the account.
   // DRY_RUN: nothing was really sold or bought, so the account must still hold
   // the MANDATED units (the owner has not moved them); the sleeve is virtual.
@@ -103,28 +115,37 @@ export function planMandate({ previous, mandate, postures, postureAt, balances, 
     if (s.stopped || posture === 'RISK_OFF') {
       if (sl.units > 0) { side = 'sell'; units = sl.units; why = s.stopped ? 'account_stop' : 'risk_off'; }
     } else if (posture === 'RISK_ON') {
-      if (sl.units * px < policy.minOrderUsd && sl.usd > 0) { side = 'buy'; units = sl.usd / (1 + fee) / quotes[a].ask; why = 'risk_on_reentry'; }
-      else if (sl.entry == null) { sl.entry = px; sl.phase = sl.usd > policy.minOrderUsd ? 'HALF' : 'FULL'; }
+      // Re-entry (and completion of a size-capped re-entry): spend the asset's own USD.
+      if (sl.usd >= policy.minOrderUsd && sl.phase !== 'HALF') { side = 'buy'; units = sl.usd / (1 + fee) / quotes[a].ask; why = 'risk_on_reentry'; }
+      else if (sl.entry == null) { sl.entry = px; sl.phase = 'FULL'; }
       else if (sl.phase === 'FULL' && px >= sl.entry * (1 + policy.takeProfitPct / 100)) { side = 'sell'; units = sl.units / 2; why = 'take_profit_half'; }
       else if (sl.phase === 'HALF' && sl.tpPx && px <= sl.tpPx * (1 - policy.rebuyPullbackPct / 100) && sl.usd > 0) { side = 'buy'; units = sl.usd / (1 + fee) / quotes[a].ask; why = 'rebuy_after_pullback'; }
     }
     if (!side) continue;
-    const notional = side === 'sell' ? units * quotes[a].bid : units * quotes[a].ask;
+    // Max order value and depth-aware size: clamp; any remainder is handled next hour.
+    const execPx = side === 'sell' ? quotes[a].bid : quotes[a].ask;
+    const depth = Number(depthUsd?.[a]?.[side === 'sell' ? 'bid' : 'ask']);
+    const capUsd = Math.min(policy.maxOrderUsd, depth > 0 ? policy.maxDepthShare * depth : Infinity);
+    if (!(depth > 0)) { continue; } // no depth data: do not trade this asset this hour
+    if (units * execPx > capUsd) { units = capUsd / execPx; why += '_size_capped'; }
+    const notional = units * execPx;
     if (notional < policy.minOrderUsd) continue;
     const id = 'shadow-' + sha({ day, a, side, why, units: +units.toFixed(8), entry: sl.entry, tp: sl.tpPx }).slice(0, 24);
     orders.push({ book: EXECUTOR_BOOKS[a], asset: a, side, type: 'market', major: +units.toFixed(8), notionalUsd: r2(notional), clientOrderId: id, reason: why });
     // DRY_RUN: assume the fill at the executable side so the sleeve evolves like the real one.
     if (side === 'sell') {
       sl.units -= units; sl.usd += notional * (1 - fee);
-      if (why === 'take_profit_half') { sl.phase = 'HALF'; sl.tpPx = px; }
-      else { sl.phase = 'CASH'; sl.entry = null; sl.tpPx = null; }
+      if (why.startsWith('take_profit_half')) { sl.phase = 'HALF'; sl.tpPx = px; }
+      else if (sl.units * px < policy.minOrderUsd) { sl.phase = 'CASH'; sl.entry = null; sl.tpPx = null; }
     } else {
       sl.units += units; sl.usd = Math.max(0, sl.usd - notional * (1 + fee));
-      sl.phase = 'FULL'; sl.entry = px; sl.tpPx = null;
+      sl.phase = sl.usd >= policy.minOrderUsd ? 'CASH' : 'FULL'; sl.entry = px; sl.tpPx = null;
     }
+    s.executions.push(new Date(+now).toISOString());
     if (sl.units < 1e-12) sl.units = 0;
   }
   s.ordersToday += orders.length; s.plannedOrders += orders.length;
+  if (s.executions.length > policy.maxExecutions7d) { s.throttled = true; s.stopReason = 'execution_throttle_' + s.executions.length + '_in_7d'; }
   return { state: s, report: { ...base, action: orders.length ? 'WOULD_SEND' : 'NO_CHANGE', why: s.stopped ? s.stopReason : null, orders,
     mandate: { valueUsd: r2(sleeveUsd), peakUsd: r2(s.peakUsd), drawdownPct: r2(ddPct), capUsd: r2(capUsd), portfolioUsd: r2(portfolioUsd), maxPortfolioFraction: policy.maxPortfolioFraction },
     sleeves: Object.fromEntries(assets.map(a => [a, { units: +s.sleeves[a].units.toFixed(8), usd: r2(s.sleeves[a].usd), phase: s.sleeves[a].phase, posture: postures[a] || 'ABSTAIN' }])),
