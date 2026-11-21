@@ -1,31 +1,29 @@
 // Shadow trend filter v0.7 — RESEARCH / PAPER ONLY.
 //
-// Rationale (docs/shadow-trend-filter-v07.md): an independent 2021-2026 replay
-// showed the v0.4 momentum votes have no directional skill (hit rate <= 50%)
-// and, used as an exit rule, trade too often to survive Bitso costs. A single,
-// pre-declared, slow trend filter (close > SMA200 of daily closes) roughly
-// halved max drawdown for BTC/ETH/ADA and stayed robust at 0.80% per side.
+// Evidence (docs/shadow-trend-filter-v07.md): in a single 2021-2026 history the
+// pre-declared rule "close > SMA200 of daily closes" roughly halved max drawdown
+// for BTC and ETH, but FAILED for LINK and XRP and was mixed for ADA/AAVE. The
+// universe is therefore restricted to BTC and ETH. This is a candidate for
+// prospective paper validation, not a proven edge.
 //
-// This module is pure: no network, no DB, no broker. It NEVER authorises live
-// orders; `tradeable` is always false and callers must keep execution disabled.
+// Pure: no network, no DB, no broker. `tradeable` is always false.
 
-export const TREND_FILTER_VERSION = 'shadow_trend_filter_v0.7';
+export const TREND_FILTER_VERSION = 'shadow_trend_filter_v0.7.1';
+export const TREND_FILTER_UNIVERSE = Object.freeze(['BTC', 'ETH']);
 export const TREND_FILTER_PARAMS = Object.freeze({
   smaDays: 200,
-  // Frozen before prospective evaluation. Changing these requires a new
-  // version string and a fresh prospective window.
   minHistoryDays: 200,
   maxLastCloseAgeHours: 36
 });
+// Sized so the strategy's historical drawdown (~40% at full exposure for
+// BTC/ETH) stays well inside the v0.6 paper limits (10% DD, 2% day loss):
+// 15% total exposure => ~6% portfolio DD; a 2% day loss needs a ~13% basket drop.
+export const TREND_FILTER_PAPER_SIZING = Object.freeze({ maxExposure: 0.15, maxAssetWeight: 0.075 });
 
 const DAY_MS = 86_400_000;
-
 function fail(code) { throw new Error('trend_filter_v07:' + code); }
 
-/**
- * Validate and normalise daily closes.
- * @param {Array<{t:number|string, close:number}>} candles closed daily candles (UTC open time)
- */
+/** Validate daily closes; throws on malformed input (use trendPosture for fail-closed postures). */
 export function normaliseDailyCloses(candles) {
   if (!Array.isArray(candles)) fail('candles_not_array');
   const rows = candles.map(c => ({ t: typeof c.t === 'string' ? Date.parse(c.t) : Number(c.t), close: Number(c.close) }));
@@ -43,15 +41,18 @@ export function normaliseDailyCloses(candles) {
 }
 
 /**
- * Compute the frozen posture for one asset as of `now`.
- * Only candles whose day has fully CLOSED before `now` are used (no lookahead).
+ * Frozen posture for one asset as of `now`. Never throws on bad data: returns
+ * ABSTAIN with the reason. Only candles whose UTC day has closed are used.
  */
 export function trendPosture({ asset, candles, now = new Date(), params = TREND_FILTER_PARAMS }) {
-  if (!asset) fail('asset_required');
   const nowMs = +now;
-  const closed = normaliseDailyCloses(candles).filter(r => r.t + DAY_MS <= nowMs);
   const base = { version: TREND_FILTER_VERSION, asset, asOf: new Date(nowMs).toISOString(),
     tradeable: false, realOrdersAllowed: false };
+  if (!TREND_FILTER_UNIVERSE.includes(asset)) return { ...base, posture: 'ABSTAIN', reason: 'asset_outside_universe' };
+  let rows;
+  try { rows = normaliseDailyCloses(candles); }
+  catch (e) { return { ...base, posture: 'ABSTAIN', reason: String(e.message).replace('trend_filter_v07:', '') }; }
+  const closed = rows.filter(r => r.t + DAY_MS <= nowMs);
   if (closed.length < params.minHistoryDays) {
     return { ...base, posture: 'ABSTAIN', reason: 'insufficient_history', historyDays: closed.length };
   }
@@ -62,7 +63,6 @@ export function trendPosture({ asset, candles, now = new Date(), params = TREND_
   }
   const window = closed.slice(-params.smaDays);
   const sma = window.reduce((s, r) => s + r.close, 0) / window.length;
-  const distancePct = (last.close / sma - 1) * 100;
   return {
     ...base,
     posture: last.close > sma ? 'RISK_ON' : 'RISK_OFF',
@@ -70,15 +70,29 @@ export function trendPosture({ asset, candles, now = new Date(), params = TREND_
     lastClose: last.close,
     lastCloseDay: new Date(last.t).toISOString().slice(0, 10),
     sma: +sma.toFixed(8),
-    distancePct: +distancePct.toFixed(3)
+    distancePct: +((last.close / sma - 1) * 100).toFixed(3)
   };
 }
 
-/** Paper-only target weights: equal split of `maxExposure` across RISK_ON assets. */
-export function paperTargetWeights(postures, { maxExposure = 0.6, maxAssetWeight = 0.2 } = {}) {
-  const on = postures.filter(p => p.posture === 'RISK_ON').map(p => p.asset);
-  const w = on.length ? Math.min(maxAssetWeight, maxExposure / on.length) : 0;
-  const weights = Object.fromEntries(postures.map(p => [p.asset, on.includes(p.asset) ? +w.toFixed(6) : 0]));
-  const cash = +(1 - on.length * w).toFixed(6);
-  return { version: TREND_FILTER_VERSION, weights, cash, tradeable: false, realOrdersAllowed: false };
+/**
+ * Paper-only target weights. RISK_ON -> per-asset weight; RISK_OFF -> 0;
+ * ABSTAIN (data failure) -> KEEP the previous weight: a data outage must never
+ * force a liquidation (same principle as the v0.6 broker).
+ */
+export function paperTargetWeights(postures, previousWeights = {}, sizing = TREND_FILTER_PAPER_SIZING) {
+  const { maxExposure, maxAssetWeight } = sizing;
+  if (!(maxExposure > 0 && maxExposure <= 0.6 && maxAssetWeight > 0 && maxAssetWeight <= 0.2)) fail('unsafe_sizing');
+  const assets = postures.map(p => p.asset);
+  if (new Set(assets).size !== assets.length) fail('duplicate_asset');
+  const per = Math.min(maxAssetWeight, maxExposure / Math.max(1, TREND_FILTER_UNIVERSE.length));
+  const weights = {};
+  for (const p of postures) {
+    if (!TREND_FILTER_UNIVERSE.includes(p.asset)) { weights[p.asset] = 0; continue; }
+    const prev = Number(previousWeights[p.asset]) || 0;
+    weights[p.asset] = p.posture === 'RISK_ON' ? per : p.posture === 'RISK_OFF' ? 0 : Math.min(prev, per);
+  }
+  const total = Object.values(weights).reduce((s, w) => s + w, 0);
+  if (total > maxExposure + 1e-9) fail('exposure_cap_breached');
+  return { version: TREND_FILTER_VERSION, weights: Object.fromEntries(Object.entries(weights).map(([k, v]) => [k, +v.toFixed(6)])),
+    cash: +(1 - total).toFixed(6), tradeable: false, realOrdersAllowed: false };
 }

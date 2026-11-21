@@ -187,6 +187,17 @@ assert.equal(crashAfterGap.paperAccount.haltLatched,true,
 assert.match(crashAfterGap.paperAccount.haltReason||'',/daily_loss_limit|total_drawdown_limit/);
 assert.equal(crashAfterGap.recoveryEvent,null);
 assert.equal(crashAfterGap.realOrdersCreated,0);
+// Boundary: holding 20 BTC @100 with 8000 cash. 90 => equity 9800 (-2.0%,
+// latch); 90.5 => 9810 (-1.9%, no latch). Proves the pause did not corrupt
+// dayStartEquityUsd/peakEquityUsd (an off-baseline would shift the boundary).
+for(const [px,latched] of [[90,true],[90.5,false]]){
+  const row=snap(180,{price:px});
+  const res=runAgentPaperCycle({control:control(row,unavailableQuote,185),currentRow:row,
+    previousState:structuredClone(exposedPaused.state),now:new Date(iso(186))});
+  assert.equal(res.paperAccount.haltLatched,latched,`boundary at price ${px}`);
+  if(latched)assert.equal(res.paperAccount.haltReason,'RISK_LIMIT_REQUIRES_RESET:daily_loss_limit');
+  assert.equal(res.realOrdersCreated,0);
+}
 const altered=structuredClone(growth);altered.assets.BTC.researchPosture='OPERATE_PAPER';
 assert.throws(()=>runAgentPaperCycle({control:altered,currentRow:s60}),/unverified_control_audit/);
 assert.throws(()=>runAgentPaperCycle({control:growth,currentRow:s120}),/control_snapshot_mismatch/);

@@ -80,7 +80,8 @@
     "learning:agent:paper": "node scripts/learning-agent-paper-broker-v06.mjs",
     "learning:agent:paper:selftest": "node scripts/learning-agent-paper-broker-v06-selftest.mjs",
     "learning:trend:v07:selftest": "node scripts/learning-trend-filter-v07-selftest.mjs",
-    "learning:audit:v04:historical": "node scripts/learning-v04-historical-audit.mjs"
+    "learning:audit:v04:historical": "node scripts/learning-v04-historical-audit.mjs",
+    "learning:audit:fetch:binance": "node scripts/learning-audit-fetch-binance-daily.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
