@@ -86,7 +86,9 @@
     "learning:trend:v07:ledger": "node scripts/learning-trend-ledger-v07.mjs",
     "learning:trend:v07:ledger:selftest": "node scripts/learning-trend-ledger-v07-selftest.mjs",
     "learning:executor:dryrun": "node scripts/learning-executor.mjs",
-    "learning:executor:selftest": "node scripts/learning-executor-v08-selftest.mjs"
+    "learning:executor:selftest": "node scripts/learning-executor-v08-selftest.mjs",
+    "learning:unusual": "node scripts/learning-unusual-moves.mjs",
+    "learning:unusual:selftest": "node scripts/learning-unusual-moves-selftest.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
