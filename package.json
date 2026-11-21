@@ -82,7 +82,9 @@
     "learning:trend:v07:selftest": "node scripts/learning-trend-filter-v07-selftest.mjs",
     "learning:audit:v04:historical": "node scripts/learning-v04-historical-audit.mjs",
     "learning:audit:fetch:binance": "node scripts/learning-audit-fetch-binance-daily.mjs",
-    "learning:audit:v07:selftest": "node scripts/learning-historical-audit-v07-selftest.mjs"
+    "learning:audit:v07:selftest": "node scripts/learning-historical-audit-v07-selftest.mjs",
+    "learning:trend:v07:ledger": "node scripts/learning-trend-ledger-v07.mjs",
+    "learning:trend:v07:ledger:selftest": "node scripts/learning-trend-ledger-v07-selftest.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
