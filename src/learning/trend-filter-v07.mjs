@@ -45,11 +45,12 @@ export function normaliseDailyCloses(candles) {
  * Frozen posture for one asset as of `now`. Never throws on bad data: returns
  * ABSTAIN with the reason. Only candles whose UTC day has closed are used.
  */
-export function trendPosture({ asset, candles, now = new Date(), params = TREND_FILTER_PARAMS }) {
+export function trendPosture({ asset, candles, now = new Date(), params = TREND_FILTER_PARAMS, universe = TREND_FILTER_UNIVERSE }) {
   const nowMs = +now;
   const base = { version: TREND_FILTER_VERSION, asset, asOf: new Date(nowMs).toISOString(),
     tradeable: false, realOrdersAllowed: false };
-  if (!TREND_FILTER_UNIVERSE.includes(asset)) return { ...base, posture: 'ABSTAIN', reason: 'asset_outside_universe' };
+  // `universe` lets an owner mandate (e.g. ADA) reuse the SAME frozen rule; the paper ledger keeps the default.
+  if (!universe.includes(asset)) return { ...base, posture: 'ABSTAIN', reason: 'asset_outside_universe' };
   let rows;
   try { rows = normaliseDailyCloses(candles); }
   catch (e) { return { ...base, posture: 'ABSTAIN', reason: String(e.message).replace('trend_filter_v07:', '') }; }
