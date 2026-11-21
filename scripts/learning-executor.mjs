@@ -15,7 +15,7 @@ if (!process.env.DATABASE_URL) fail('DATABASE_URL_required');
 if (String(process.env.SHADOW_EXECUTION_ENABLED || 'false').toLowerCase() === 'true') fail('live_execution_not_supported_in_this_build');
 const mandate = parseMandate(process.env.SHADOW_MANDATE_JSON || '');
 const KRAKEN_PAIR = { BTC: 'XBTUSD', ETH: 'ETHUSD', ADA: 'ADAUSD' };
-const STABLE_USD = new Set(['usd', 'usdt', 'usdc', 'usds']);
+const STABLE_USD = new Set(['usd', 'usdt', 'usdc', 'usds', 'tusd', 'dai', 'pyusd']);
 
 async function getJson(url, ms = 8000) {
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
@@ -49,7 +49,8 @@ if (process.env.BITSO_READONLY_API_KEY && process.env.BITSO_READONLY_API_SECRET)
       if (!(b.total > 0)) continue;
       if (STABLE_USD.has(cur)) { portfolioUsd += b.total; continue; }
       let px = null;
-      try { const q = await bitsoTicker(`${cur}_usd`); px = (q.bid + q.ask) / 2; }
+      if (cur === 'mxn') { try { const q = await bitsoTicker('usd_mxn'); px = 2 / (q.bid + q.ask); } catch { /* unvalued */ } }
+      else try { const q = await bitsoTicker(`${cur}_usd`); px = (q.bid + q.ask) / 2; }
       catch { try { px = await krakenLast(cur); } catch { /* unvalued */ } }
       if (px > 0) portfolioUsd += b.total * px; else unvalued.push(cur); // excluded: conservative (smaller cap)
     }
