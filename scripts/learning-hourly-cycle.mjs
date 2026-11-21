@@ -321,6 +321,23 @@ if(String(process.env.LEARNING_TREND_LEDGER_V07_ENABLED||'false').toLowerCase()=
   };
 }
 
+// Executor v0.7 DRY_RUN: computes the orders it WOULD send to Bitso for the
+// Shadow sleeve (never 100% of the portfolio). Read-only key only; this build
+// has no order-sending code. Runs after the trend ledger.
+let executorV07=null;
+if(String(process.env.LEARNING_EXECUTOR_V07_DRYRUN_ENABLED||'false').toLowerCase()==='true' && collectorOk && trendLedgerV07?.ok===true){
+  const run=spawnSync('npm',['run','learning:executor:v07:dryrun'],{
+    encoding:'utf8',env:process.env,timeout:40000,maxBuffer:1024*1024
+  });
+  const line=String(run.stdout||'').split(/\r?\n/).find(x=>x.startsWith('SHADOW_EXECUTOR_V07='))||null;
+  executorV07={
+    attempted:true,ok:run.status===0&&Boolean(line),status:run.status,
+    summary:line?line.slice(0,8000):null,
+    stderr_tail:String(run.stderr||'').trim().slice(-1000),
+    mode:'DRY_RUN',real_order_router_connected:false,real_orders_created:0,execution_enabled:false
+  };
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
@@ -380,6 +397,7 @@ console.log(JSON.stringify({
   autonomy_control_v05: autonomyControlV05,
   paper_broker_v06: paperBrokerV06,
   trend_ledger_v07: trendLedgerV07,
+  executor_v07: executorV07,
   groq_canary: groqCanary,
   execution_enabled: false
 }, null, 2));
