@@ -304,6 +304,23 @@ if(String(process.env.LEARNING_AGENT_PAPER_BROKER_ENABLED||'false').toLowerCase(
   };
 }
 
+// Trend ledger v0.7: independent PAPER account for the SMA200 trend filter
+// (BTC/ETH). Hourly; uses closed daily candles only; Bitso public bid/ask;
+// risk limits measured, not enforced. Off unless explicitly enabled.
+let trendLedgerV07=null;
+if(String(process.env.LEARNING_TREND_LEDGER_V07_ENABLED||'false').toLowerCase()==='true' && collectorOk){
+  const run=spawnSync('npm',['run','learning:trend:v07:ledger'],{
+    encoding:'utf8',env:process.env,timeout:40000,maxBuffer:1024*1024
+  });
+  const line=String(run.stdout||'').split(/\r?\n/).find(x=>x.startsWith('SHADOW_TREND_LEDGER_V07='))||null;
+  trendLedgerV07={
+    attempted:true,ok:run.status===0&&Boolean(line),status:run.status,
+    summary:line?line.slice(0,8000):null,
+    stderr_tail:String(run.stderr||'').trim().slice(-1000),
+    simulated_only:true,real_order_router_connected:false,real_orders_created:0,execution_enabled:false
+  };
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String(process.env.LEARNING_EVENT_NOISE_AUDIT || 'false').toLowerCase()==='true'
@@ -362,6 +379,7 @@ console.log(JSON.stringify({
   prospective_forecast_v04: prospectiveV04,
   autonomy_control_v05: autonomyControlV05,
   paper_broker_v06: paperBrokerV06,
+  trend_ledger_v07: trendLedgerV07,
   groq_canary: groqCanary,
   execution_enabled: false
 }, null, 2));

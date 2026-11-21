@@ -169,6 +169,56 @@ const notCleared=runAgentPaperCycle({control:restoredControl,currentRow:s180,
 assert.equal(notCleared.status,'HALT');
 assert.equal(notCleared.paperAccount.haltLatched,true);
 assert.equal(notCleared.recoveryEvent,null);
+// Regression (post-0177b06): a quote outage WHILE EXPOSED must only pause, and
+// a loss that materialises once quotes return must still latch a durable HALT.
+// Guards against the transient-pause path masking a real drawdown breach.
+const exposedPaused=runAgentPaperCycle({control:unavailableControl,currentRow:unavailableQuote,
+  previousState:structuredClone(paperHolding),now:new Date(iso(126))});
+assert.equal(exposedPaused.status,'HALT');
+assert.equal(exposedPaused.paperAccount.haltLatched,false);
+assert.equal(exposedPaused.fills.length,0);
+const crash=snap(180,{price:40});
+const crashControl=control(crash,unavailableQuote,185);
+const crashAfterGap=runAgentPaperCycle({control:crashControl,currentRow:crash,
+  previousState:exposedPaused.state,now:new Date(iso(186))});
+assert.equal(crashAfterGap.status,'HALT');
+assert.equal(crashAfterGap.paperAccount.haltLatched,true,
+  'loss revealed after a quote gap MUST latch');
+assert.match(crashAfterGap.paperAccount.haltReason||'',/daily_loss_limit|total_drawdown_limit/);
+assert.equal(crashAfterGap.recoveryEvent,null);
+assert.equal(crashAfterGap.realOrdersCreated,0);
+// Boundary: holding 20 BTC @100 with 8000 cash. 90 => equity 9800 (-2.0%,
+// latch); 90.5 => 9810 (-1.9%, no latch). Proves the pause did not corrupt
+// dayStartEquityUsd/peakEquityUsd (an off-baseline would shift the boundary).
+for(const [px,latched] of [[90,true],[90.5,false]]){
+  const row=snap(180,{price:px});
+  const res=runAgentPaperCycle({control:control(row,unavailableQuote,185),currentRow:row,
+    previousState:structuredClone(exposedPaused.state),now:new Date(iso(186))});
+  assert.equal(res.paperAccount.haltLatched,latched,`boundary at price ${px}`);
+  if(latched)assert.equal(res.paperAccount.haltReason,'RISK_LIMIT_REQUIRES_RESET:daily_loss_limit');
+  assert.equal(res.realOrdersCreated,0);
+}
+// Drawdown-only breach: day loss 0% but peak 11000 -> equity 9850 (-10.45%).
+{
+  const st=structuredClone(exposedPaused.state);
+  st.peakEquityUsd=11000;st.dayStartEquityUsd=9850;st.latestEquityUsd=9850;
+  const row=snap(180,{price:92.5});
+  const res=runAgentPaperCycle({control:control(row,unavailableQuote,185),currentRow:row,
+    previousState:st,now:new Date(iso(186))});
+  assert.equal(res.paperAccount.haltLatched,true);
+  assert.equal(res.paperAccount.haltReason,'RISK_LIMIT_REQUIRES_RESET:total_drawdown_limit');
+}
+// Gap across UTC midnight: the day base becomes the last known equity (9900),
+// so a fall to 9800 is -1.01% (no latch) rather than -2% vs a stale base.
+{
+  const st=structuredClone(exposedPaused.state);
+  st.dayUtc='2026-11-18';st.latestEquityUsd=9900;st.dayStartEquityUsd=10000;
+  const row=snap(180,{price:90});
+  const res=runAgentPaperCycle({control:control(row,unavailableQuote,185),currentRow:row,
+    previousState:st,now:new Date(iso(186))});
+  assert.equal(res.paperAccount.haltLatched,false,'new UTC day re-bases daily loss');
+  assert.equal(res.realOrdersCreated,0);
+}
 const altered=structuredClone(growth);altered.assets.BTC.researchPosture='OPERATE_PAPER';
 assert.throws(()=>runAgentPaperCycle({control:altered,currentRow:s60}),/unverified_control_audit/);
 assert.throws(()=>runAgentPaperCycle({control:growth,currentRow:s120}),/control_snapshot_mismatch/);

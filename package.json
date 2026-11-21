@@ -78,7 +78,13 @@
     "learning:autonomy:control": "node scripts/learning-autonomy-control-v05.mjs",
     "learning:autonomy:selftest": "node scripts/learning-autonomy-control-v05-selftest.mjs",
     "learning:agent:paper": "node scripts/learning-agent-paper-broker-v06.mjs",
-    "learning:agent:paper:selftest": "node scripts/learning-agent-paper-broker-v06-selftest.mjs"
+    "learning:agent:paper:selftest": "node scripts/learning-agent-paper-broker-v06-selftest.mjs",
+    "learning:trend:v07:selftest": "node scripts/learning-trend-filter-v07-selftest.mjs",
+    "learning:audit:v04:historical": "node scripts/learning-v04-historical-audit.mjs",
+    "learning:audit:fetch:binance": "node scripts/learning-audit-fetch-binance-daily.mjs",
+    "learning:audit:v07:selftest": "node scripts/learning-historical-audit-v07-selftest.mjs",
+    "learning:trend:v07:ledger": "node scripts/learning-trend-ledger-v07.mjs",
+    "learning:trend:v07:ledger:selftest": "node scripts/learning-trend-ledger-v07-selftest.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
