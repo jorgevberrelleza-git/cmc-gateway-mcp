@@ -38,14 +38,16 @@ export function simulate(c, t, i0, want, cost) {
   let inv = want(i0, 0), eq = 1, hold = 1, pk = 1, hpk = 1, dd = 0, hdd = 0, trades = 0, inDays = 0, n = 0;
   const yr = {};
   for (let i = i0; i < c.length; i++) {
+    // Year base = equity at the PREVIOUS close, so day 1 of each year counts.
+    const y = new Date(t[i]).getUTCFullYear();
+    yr[y] = yr[y] || { s: eq, hs: hold };
     if (i > i0) { const r = c[i] / c[i - 1]; hold *= r; if (inv) eq *= r; }
     const w = want(i, inv);
     if (w !== inv) { inv = w; eq *= 1 - cost; trades++; }
     pk = Math.max(pk, eq); hpk = Math.max(hpk, hold);
     dd = Math.min(dd, eq / pk - 1); hdd = Math.min(hdd, hold / hpk - 1);
     n++; inDays += inv;
-    const y = new Date(t[i]).getUTCFullYear();
-    yr[y] = yr[y] || { s: eq, hs: hold }; yr[y].e = eq; yr[y].he = hold;
+    yr[y].e = eq; yr[y].he = hold;
   }
   const pct = x => +((x - 1) * 100).toFixed(1);
   return { costPerSidePct: +(cost * 100).toFixed(2), retPct: pct(eq), holdRetPct: pct(hold),

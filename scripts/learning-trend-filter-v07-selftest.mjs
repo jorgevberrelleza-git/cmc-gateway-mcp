@@ -38,13 +38,15 @@ assert.equal(w.weights.BTC, 0.075);
 assert.equal(w.weights.ETH, 0.075);
 assert.equal(w.weights.ADA, 0, 'outside universe is never sized');
 assert.equal(w.cash, 0.85);
-const kept = paperTargetWeights([{ asset: 'BTC', posture: 'ABSTAIN' }, { asset: 'ETH', posture: 'RISK_OFF' }], { BTC: 0.075, ETH: 0.075 });
+const kept = paperTargetWeights([{ asset: 'BTC', posture: 'ABSTAIN' }, { asset: 'ETH', posture: 'RISK_OFF' }], { previousWeights: { BTC: 0.075, ETH: 0.075 }, abstainDays: { BTC: 1 } });
 assert.equal(kept.weights.BTC, 0.075, 'data outage keeps position');
 assert.equal(kept.weights.ETH, 0);
 const fresh = paperTargetWeights([{ asset: 'BTC', posture: 'ABSTAIN' }]);
 assert.equal(fresh.weights.BTC, 0, 'ABSTAIN never opens a position');
 assert.throws(() => paperTargetWeights([{ asset: 'BTC', posture: 'RISK_ON' }, { asset: 'BTC', posture: 'RISK_ON' }]), /duplicate_asset/);
-assert.throws(() => paperTargetWeights([], {}, { maxExposure: 0.9, maxAssetWeight: 0.5 }), /unsafe_sizing/);
+assert.throws(() => paperTargetWeights([], { sizing: { maxExposure: 0.9, maxAssetWeight: 0.5 } }), /unsafe_sizing/);
+const expired = paperTargetWeights([{ asset: 'BTC', posture: 'ABSTAIN' }], { previousWeights: { BTC: 0.075 }, abstainDays: { BTC: 3 } });
+assert.equal(expired.weights.BTC, 0, 'ABSTAIN TTL: stale exposure is closed after 3 days');
 
 console.log('SHADOW_TREND_FILTER_V07_SELFTEST=' + JSON.stringify({ ok: true, version: TREND_FILTER_VERSION,
-  noLookaheadAtBoundary: true, failClosedNoThrow: true, abstainKeepsPosition: true, sizingWithinV06Limits: true, realOrders: 0 }));
+  noLookaheadAtBoundary: true, failClosedNoThrow: true, abstainKeepsPositionWithTtl: true, sizingWithinV06Limits: true, realOrders: 0 }));

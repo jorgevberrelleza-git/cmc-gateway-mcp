@@ -13,7 +13,8 @@ export const TREND_FILTER_UNIVERSE = Object.freeze(['BTC', 'ETH']);
 export const TREND_FILTER_PARAMS = Object.freeze({
   smaDays: 200,
   minHistoryDays: 200,
-  maxLastCloseAgeHours: 36
+  maxLastCloseAgeHours: 36,
+  maxAbstainKeepDays: 3
 });
 // Sized so the strategy's historical drawdown (~40% at full exposure for
 // BTC/ETH) stays well inside the v0.6 paper limits (10% DD, 2% day loss):
@@ -76,10 +77,11 @@ export function trendPosture({ asset, candles, now = new Date(), params = TREND_
 
 /**
  * Paper-only target weights. RISK_ON -> per-asset weight; RISK_OFF -> 0;
- * ABSTAIN (data failure) -> KEEP the previous weight: a data outage must never
- * force a liquidation (same principle as the v0.6 broker).
+ * ABSTAIN (data failure) -> KEEP the previous weight for up to 3 consecutive
+ * days (a short outage never forces a liquidation, as in the v0.6 broker);
+ * from the 3rd consecutive ABSTAIN day the weight goes to 0.
  */
-export function paperTargetWeights(postures, previousWeights = {}, sizing = TREND_FILTER_PAPER_SIZING) {
+export function paperTargetWeights(postures, { previousWeights = {}, abstainDays = {}, sizing = TREND_FILTER_PAPER_SIZING } = {}) {
   const { maxExposure, maxAssetWeight } = sizing;
   if (!(maxExposure > 0 && maxExposure <= 0.6 && maxAssetWeight > 0 && maxAssetWeight <= 0.2)) fail('unsafe_sizing');
   const assets = postures.map(p => p.asset);
@@ -89,7 +91,10 @@ export function paperTargetWeights(postures, previousWeights = {}, sizing = TREN
   for (const p of postures) {
     if (!TREND_FILTER_UNIVERSE.includes(p.asset)) { weights[p.asset] = 0; continue; }
     const prev = Number(previousWeights[p.asset]) || 0;
-    weights[p.asset] = p.posture === 'RISK_ON' ? per : p.posture === 'RISK_OFF' ? 0 : Math.min(prev, per);
+    // ABSTAIN keeps the prior weight for at most MAX_ABSTAIN_KEEP_DAYS consecutive
+    // days; a longer outage is treated as RISK_OFF so stale exposure cannot persist.
+    const stale = (Number(abstainDays[p.asset]) || 0) >= TREND_FILTER_PARAMS.maxAbstainKeepDays;
+    weights[p.asset] = p.posture === 'RISK_ON' ? per : p.posture === 'RISK_OFF' || stale ? 0 : Math.min(prev, per);
   }
   const total = Object.values(weights).reduce((s, w) => s + w, 0);
   if (total > maxExposure + 1e-9) fail('exposure_cap_breached');

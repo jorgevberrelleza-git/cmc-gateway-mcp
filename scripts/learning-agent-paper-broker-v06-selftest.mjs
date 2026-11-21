@@ -198,6 +198,27 @@ for(const [px,latched] of [[90,true],[90.5,false]]){
   if(latched)assert.equal(res.paperAccount.haltReason,'RISK_LIMIT_REQUIRES_RESET:daily_loss_limit');
   assert.equal(res.realOrdersCreated,0);
 }
+// Drawdown-only breach: day loss 0% but peak 11000 -> equity 9850 (-10.45%).
+{
+  const st=structuredClone(exposedPaused.state);
+  st.peakEquityUsd=11000;st.dayStartEquityUsd=9850;st.latestEquityUsd=9850;
+  const row=snap(180,{price:92.5});
+  const res=runAgentPaperCycle({control:control(row,unavailableQuote,185),currentRow:row,
+    previousState:st,now:new Date(iso(186))});
+  assert.equal(res.paperAccount.haltLatched,true);
+  assert.equal(res.paperAccount.haltReason,'RISK_LIMIT_REQUIRES_RESET:total_drawdown_limit');
+}
+// Gap across UTC midnight: the day base becomes the last known equity (9900),
+// so a fall to 9800 is -1.01% (no latch) rather than -2% vs a stale base.
+{
+  const st=structuredClone(exposedPaused.state);
+  st.dayUtc='2026-11-18';st.latestEquityUsd=9900;st.dayStartEquityUsd=10000;
+  const row=snap(180,{price:90});
+  const res=runAgentPaperCycle({control:control(row,unavailableQuote,185),currentRow:row,
+    previousState:st,now:new Date(iso(186))});
+  assert.equal(res.paperAccount.haltLatched,false,'new UTC day re-bases daily loss');
+  assert.equal(res.realOrdersCreated,0);
+}
 const altered=structuredClone(growth);altered.assets.BTC.researchPosture='OPERATE_PAPER';
 assert.throws(()=>runAgentPaperCycle({control:altered,currentRow:s60}),/unverified_control_audit/);
 assert.throws(()=>runAgentPaperCycle({control:growth,currentRow:s120}),/control_snapshot_mismatch/);
