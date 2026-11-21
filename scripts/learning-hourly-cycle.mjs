@@ -345,6 +345,14 @@ if(String(process.env.LEARNING_EXECUTOR_DRYRUN_ENABLED||process.env.LEARNING_EXE
   };
 }
 
+// Unusual-move scan (informational, Kraken hourly, no DB, no positions). Runs in lean mode too.
+let unusualMoves=null;
+if(String(process.env.LEARNING_UNUSUAL_MOVES_ENABLED||'false').toLowerCase()==='true'){
+  const run=spawnSync('npm',['run','learning:unusual'],{encoding:'utf8',env:process.env,timeout:30000,maxBuffer:512*1024});
+  const line=String(run.stdout||'').split(/\r?\n/).find(x=>x.startsWith('SHADOW_UNUSUAL='))||null;
+  unusualMoves={attempted:true,ok:run.status===0&&Boolean(line),summary:line?line.slice(0,4000):null,stderr_tail:String(run.stderr||'').trim().slice(-500),affects_positions:false};
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String((LEAN?undefined:process.env.LEARNING_EVENT_NOISE_AUDIT) || 'false').toLowerCase()==='true'
@@ -405,6 +413,7 @@ console.log(JSON.stringify({
   paper_broker_v06: paperBrokerV06,
   trend_ledger_v07: trendLedgerV07,
   executor: executorDryRun,
+  unusual_moves: unusualMoves,
   groq_canary: groqCanary,
   execution_enabled: false
 }, null, 2));
@@ -418,6 +427,7 @@ console.log('SHADOW_DECISION_SUMMARY=' + JSON.stringify({
   postures: led?.postures?.map(p => `${p.asset}:${p.posture}:${p.distancePct ?? 'na'}%`) || null,
   paperLedger: led ? { action: led.action, equityUsd: led.marks?.equityUsd ?? null, ddPct: led.marks?.drawdownPct ?? null, wouldHalt: led.wouldHalt, dataErrors: led.dataErrors?.length ?? 0 } : (trendLedgerV07 ? { ok: false } : null),
   executor: exe ? { action: exe.action, why: exe.why, wouldSend: exe.wouldSend, mandateUsd: exe.mandate?.valueUsd ?? null, mandateDdPct: exe.mandate?.drawdownPct ?? null, capUsd: exe.mandate?.capUsd ?? null, sleeves: exe.sleeves, stopped: exe.stopped, dataErrors: exe.dataErrors, unvalued: exe.unvaluedCurrencies } : (executorDryRun ? { ok: false, stderr: executorDryRun.stderr_tail?.slice(-300) } : null),
+  unusual: (() => { const u = parseLine(unusualMoves, 'SHADOW_UNUSUAL='); return u ? { extreme: u.flagged, errors: u.errors?.length || 0 } : null; })(),
   realOrders: 0, executionEnabled: false
 }));
 if (!ok) process.exitCode = 1;
