@@ -2,6 +2,7 @@
 // Reuses Shadow's append-only research table. Does not touch orders, accounts,
 // paper portfolios, model weights, paid APIs, or historical replay paths.
 import { createLearningStore } from '../src/learning/storage.mjs';
+import { summarizeProspectiveScores } from '../src/learning/prospective-audit-v04.mjs';
 import {
   FORECAST_VERSION,HORIZONS,ASSETS,issueProspectiveForecast,
   settleProspectiveForecast,priceFromSnapshot
@@ -15,6 +16,7 @@ const lookback=new Date(at-10*86_400_000);
 const scoreVersion=h=>'shadow_prospective_score_v0.4_'+h.id;
 let created=false,duplicate=false,forecast=null;
 const stats={due:0,scored:0,abstained:0,missing:0,immature:0};
+let audit=null;
 let assessments={};
 try {
   const recentEval=await store.listShadowV2Evaluations({from:lookback.toISOString(),to:now.toISOString(),limit:5000});
@@ -43,10 +45,11 @@ try {
     created=Boolean(saved);
     duplicate=!saved;
   }
+  const savedScoreRows=recentEval.filter(x=>x.strategy_version?.startsWith('shadow_prospective_score_v0.4_'));
   const candidates=recentEval.filter(x=>x.strategy_version===FORECAST_VERSION)
     .sort((a,b)=>Date.parse(a.generated_at)-Date.parse(b.generated_at));
   // If this run created today's forecast, include it: no need to backfill past data.
-  if(created)candidates.push({snapshot_id:forecast.snapshotId,asset_assessments:{forecast}});
+  if(created)candidates.push({strategy_version:FORECAST_VERSION,snapshot_id:forecast.snapshotId,asset_assessments:{forecast}});
   for(const row of candidates){
     const f=row.asset_assessments?.forecast;
     if(!f || f.version!==FORECAST_VERSION)continue;
@@ -85,6 +88,7 @@ try {
         external_research_trigger:{required:false,ordersCreated:0}
       });
       if(persisted){
+        savedScoreRows.push(persisted);
         existingScores.add(key);
         for(const outcome of Object.values(outcomes)){
           if(outcome.status==='SCORED')stats.scored++;
@@ -94,6 +98,9 @@ try {
       }
     }
   }
+  audit=summarizeProspectiveScores({
+    forecastRows:candidates,scoreRows:savedScoreRows,now,recentLimit:9
+  });
   assessments=forecast?.assets||{};
   const summarized=Object.fromEntries(ASSETS.map(asset=>{
     const a=assessments[asset]||{};
@@ -113,7 +120,7 @@ try {
   console.log('SHADOW_PROSPECTIVE_V04='+JSON.stringify({
     ok:true,created,duplicate,forecastIssuedAt:forecast?.issuedAt||null,
     commitmentHash:forecast?.commitmentHash||null,
-    assets:summarized,outcomes:stats,calibratedProbabilities:false,
+    assets:summarized,outcomes:stats,cumulativeAudit:audit,calibratedProbabilities:false,
     dataGapExclusionsRequired:true,investmentAdvice:false,
     paidAiCalls:0,externalMarketCalls:0,realOrders:0,executionEnabled:false
   }));
