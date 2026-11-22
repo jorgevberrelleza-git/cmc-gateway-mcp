@@ -8,6 +8,7 @@ on:
   pull_request:
     branches:
       - main
+      - feature/learning-engine-v0.1
 
 permissions:
   contents: read
@@ -106,6 +107,24 @@ jobs:
 
       - name: GEO v0.2 calendar and outcome self-test
         run: npm run learning:geo:v02:selftest
+
+      - name: Shadow trend ledger v0.7 self-test
+        run: npm run learning:trend:v07:ledger:selftest
+
+      - name: Shadow executor v0.8 self-test (dry-run, no order code)
+        run: npm run learning:executor:selftest
+
+      - name: Shadow unusual-moves self-test
+        run: npm run learning:unusual:selftest
+
+      - name: Shadow live trade client self-test (locked until go-live)
+        run: npm run learning:trade-client:selftest
+
+      - name: Shadow order journal + rehearsal self-test
+        run: npm run learning:order-journal:selftest
+
+      - name: Shadow fill reconciliation self-test
+        run: npm run learning:reconcile:selftest
 
   postgres-integration:
     runs-on: ubuntu-latest
