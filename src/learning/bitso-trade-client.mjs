@@ -17,15 +17,11 @@
 //    -> caller must stop and reconcile by origin_id).
 //  - Kill cancels only Shadow's own orders (by origin_id), never the owner's manual ones.
 import crypto from 'node:crypto';
+import { TRADE_LIMITS, BOOKS, ORIGIN_ID_RE, collarPrice, buildLimitIoc } from './bitso-order-spec.mjs';
+export { TRADE_LIMITS, BOOKS, collarPrice }; // single source of truth: bitso-order-spec.mjs
 
 export const LIVE_GO_LIVE_DATE = '2027-01-31T00:00:00Z';
 export const MAX_ARM_WINDOW_DAYS = 31;
-export const TRADE_LIMITS = Object.freeze({ minOrderUsd: 5, maxOrderUsd: 2500, collarMaxPct: 2 });
-export const BOOKS = Object.freeze({
-  btc_usd: Object.freeze({ majorDecimals: 8, priceDecimals: 0, tick: 1 }),
-  ada_usd: Object.freeze({ majorDecimals: 2, priceDecimals: 5, tick: 0.00001 })
-});
-const ORIGIN_ID_RE = /^shadow-[a-f0-9]{24}$/;
 const ISO_Z_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?Z$/;
 
 export class TradeError extends Error {
@@ -60,26 +56,6 @@ export function assertLiveArmed() {
 
 export function signBitso({ key, secret, nonce, method, path, body = '' }) {
   return `Bitso ${key}:${nonce}:` + crypto.createHmac('sha256', secret).update(String(nonce) + method + path + body).digest('hex');
-}
-
-function fmt(n, decimals, what, round = 'floor') {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) throw new Error('trade:bad_' + what);
-  const f = 10 ** decimals;
-  const steps = Math.round(n * f * 1e6) / 1e6; // float-safe
-  const s = ((round === 'ceil' ? Math.ceil(steps) : Math.floor(steps)) / f).toFixed(decimals);
-  if (!/^\d+(\.\d+)?$/.test(s) || Number(s) <= 0) throw new Error('trade:bad_' + what + '_format');
-  return s;
-}
-
-/** Collar price at the book tick, rounded to the conservative side. */
-export function collarPrice({ side, bid, ask, collarPct, book }) {
-  if (side !== 'buy' && side !== 'sell') throw new Error('trade:bad_side');
-  const b = BOOKS[book]; if (!b) throw new Error('trade:book_not_allowed:' + book);
-  if (!(bid > 0 && ask >= bid && collarPct > 0 && collarPct <= TRADE_LIMITS.collarMaxPct)) throw new Error('trade:bad_collar_inputs');
-  const raw = side === 'buy' ? ask * (1 + collarPct / 100) : bid * (1 - collarPct / 100);
-  const steps = Math.round((raw / b.tick) * 1e9) / 1e9;
-  const q = side === 'buy' ? Math.floor(steps) : Math.ceil(steps); // buy never above, sell never below the collar
-  return +(q * b.tick).toFixed(b.priceDecimals);
 }
 
 /**
@@ -118,14 +94,8 @@ export function makeBitsoTradeClient({ journal, baseUrl = 'https://api.bitso.com
   }
   return {
     async placeLimitIoc({ book, side, major, price, originId }) {
-      const b = BOOKS[book]; if (!b) throw new Error('trade:book_not_allowed:' + book);
-      if (side !== 'buy' && side !== 'sell') throw new Error('trade:bad_side');
-      if (!ORIGIN_ID_RE.test(String(originId))) throw new Error('trade:bad_origin_id');
-      // Amount always floored; price rounded to the conservative side (sell up, buy down).
-      const majorS = fmt(major, b.majorDecimals, 'major'), priceS = fmt(price, b.priceDecimals, 'price', side === 'sell' ? 'ceil' : 'floor');
-      const notional = Number(majorS) * Number(priceS);
-      if (notional < TRADE_LIMITS.minOrderUsd) throw new Error('trade:below_min_order_usd');
-      if (notional > TRADE_LIMITS.maxOrderUsd) throw new Error('trade:above_max_order_usd');
+      const o = buildLimitIoc({ book, side, major, price, originId }); // books, side, id, formatting, caps
+      const majorS = o.major, priceS = o.price;
       if ((await journal.unresolvedCount()) > 0) throw new TradeError('REJECTED', 'blocked_until_unknown_orders_reconciled', originId);
       if (inFlight.has(originId)) throw new TradeError('REJECTED', 'duplicate_origin_id_in_flight', originId);
       inFlight.add(originId);
