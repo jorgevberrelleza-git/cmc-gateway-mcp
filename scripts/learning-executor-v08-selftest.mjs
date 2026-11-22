@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { planMandate, parseMandate, checkPolicy, initialExecutorState, EXECUTOR_POLICY, EXECUTOR_VERSION } from '../src/learning/executor-v08.mjs';
+import { planMandate, parseMandate, checkPolicy, initialExecutorState, canonicalMandate, migrateExecutorState, EXECUTOR_POLICY, EXECUTOR_VERSION } from '../src/learning/executor-v08.mjs';
 import { signBitso, makeBitsoReadOnlyClient } from '../src/learning/bitso-readonly-client.mjs';
 
 const t0 = Date.parse('2027-02-01T12:20:00Z');
@@ -109,6 +109,32 @@ th = step(th, { BTC: 'RISK_ON', ADA: 'RISK_OFF' }, q(57000, 0.137), 1, bal({}), 
 assert.equal(th.throttled, true);
 assert.equal(step(th, { BTC: 'RISK_OFF', ADA: 'RISK_OFF' }, q(57000, 0.137), 2, bal({}), PORT, { policy: thrPol }).report.why, 'execution_throttle_latched_requires_owner_reset');
 
+// Persistence round-trip: Postgres jsonb sorts object keys. A state read back from
+// the DB ({"ADA":..,"BTC":..}) must continue, not fail as "mandate changed".
+const jsonbRoundTrip = x => JSON.parse(JSON.stringify(x, (k, v) => (v && typeof v === 'object' && !Array.isArray(v))
+  ? Object.fromEntries(Object.keys(v).sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0)).map(key => [key, v[key]])) : v));
+const rt0 = step(null, { BTC: 'RISK_OFF', ADA: 'RISK_OFF' }, q(57000, 0.137), 0, bal({}));
+const rtState = jsonbRoundTrip(rt0.state);
+assert.deepEqual(Object.keys(rtState.mandate), ['ADA', 'BTC'], 'round-trip reorders keys like jsonb');
+const rt1 = step(rtState, { BTC: 'RISK_OFF', ADA: 'RISK_OFF' }, q(57500, 0.138), 1, bal({}));
+assert.equal(rt1.report.action, 'NO_CHANGE', 'second hour after a DB round-trip continues');
+assert.equal(canonicalMandate({ BTC: 0.01249, ADA: 12000 }), canonicalMandate({ ADA: 12000, BTC: 0.01249 }));
+// A real mandate change is still refused.
+assert.throws(() => planMandate({ previous: rtState, mandate: parseMandate('{"BTC":0.02,"ADA":12000}'), postures: { BTC: 'RISK_OFF', ADA: 'RISK_OFF' },
+  postureAt: at(1).toISOString(), balances: bal({}), portfolioUsd: PORT, quotes: q(57000, 0.137), refPrices: refOf(q(57000, 0.137)), depthUsd: DEEP, now: at(1) }), /mandate_changed_requires_new_state/);
+// Deploy continuity: a compatible earlier version's state is carried over (sleeves kept, not re-sold).
+const oldState = { ...jsonbRoundTrip(rt0.state), version: 'shadow_executor_v0.8.1' };
+const mig = step(oldState, { BTC: 'RISK_OFF', ADA: 'RISK_OFF' }, q(59000, 0.142), 2, bal({}));
+assert.equal(mig.state.version, EXECUTOR_VERSION);
+assert.deepEqual(mig.state.migratedFrom, ['shadow_executor_v0.8.1']);
+assert.equal(mig.report.orders.length, 0, 'no re-sell after a deploy');
+assert.equal(mig.state.sleeves.BTC.usd, rt0.state.sleeves.BTC.usd, 'sleeve USD preserved across versions');
+const v08 = { ...jsonbRoundTrip(rt0.state), version: 'shadow_executor_v0.8' }; delete v08.executions; delete v08.throttled;
+assert.equal(migrateExecutorState(v08).throttled, false);
+assert.ok(Array.isArray(migrateExecutorState(v08).executions));
+assert.throws(() => migrateExecutorState({ ...rt0.state, version: 'shadow_executor_v0.7' }), /version_mismatch/);
+assert.throws(() => migrateExecutorState({ ...rt0.state, version: 'shadow_executor_v0.9' }), /version_mismatch/);
+
 // Read-only client & no order code anywhere in the executor build.
 assert.match(signBitso({ key: 'k', secret: 's', nonce: 1, method: 'GET', path: '/api/v3/balance/' }), /^Bitso k:1:[a-f0-9]{64}$/);
 assert.throws(() => makeBitsoReadOnlyClient({ key: '', secret: '' }), /credentials_missing/);
@@ -116,4 +142,4 @@ const src = ['../src/learning/bitso-readonly-client.mjs', '../src/learning/execu
   .map(p => fs.readFileSync(new URL(p, import.meta.url), 'utf8')).join('\n');
 assert.ok(!/['"]POST['"]|['"]DELETE['"]|\/api\/v3\/orders/.test(src), 'no order-sending code in the dry-run build');
 
-console.log('SHADOW_EXECUTOR_V08_SELFTEST=' + JSON.stringify({ ok: true, version: EXECUTOR_VERSION, mandateOnly: true, sellsOnRiskOff: true, takeProfitHalf: true, rebuyOnPullback: true, sleevesIsolated: true, capBelow100: true, accountStopLatches: true, failClosed: true, priceCollar: true, maxOrderValue: true, depthAware: true, executionThrottle: true, realOrdersSent: 0 }));
+console.log('SHADOW_EXECUTOR_V08_SELFTEST=' + JSON.stringify({ ok: true, version: EXECUTOR_VERSION, mandateOnly: true, sellsOnRiskOff: true, takeProfitHalf: true, rebuyOnPullback: true, sleevesIsolated: true, capBelow100: true, accountStopLatches: true, failClosed: true, priceCollar: true, maxOrderValue: true, depthAware: true, executionThrottle: true, jsonbRoundTrip: true, deployContinuity: true, realOrdersSent: 0 }));

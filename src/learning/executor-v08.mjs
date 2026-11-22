@@ -15,7 +15,11 @@
 // idempotent ids. mode is DRY_RUN: nothing is ever sent.
 import crypto from 'node:crypto';
 
-export const EXECUTOR_VERSION = 'shadow_executor_v0.8.1';
+export const EXECUTOR_VERSION = 'shadow_executor_v0.8.2';
+// Earlier versions whose state has the same shape: their state is carried over
+// on deploy instead of restarting the mandate (a restart re-sells the sleeves at
+// the deploy-hour price and breaks the continuous extra-vs-HOLD series).
+export const EXECUTOR_STATE_COMPATIBLE = Object.freeze(['shadow_executor_v0.8', 'shadow_executor_v0.8.1', 'shadow_executor_v0.8.2']);
 export const EXECUTOR_BOOKS = Object.freeze({ BTC: 'btc_usd', ETH: 'eth_usd', ADA: 'ada_usd' });
 export const EXECUTOR_POLICY = Object.freeze({
   maxPortfolioFraction: 0.5, stopDrawdownPct: 20, takeProfitPct: 30, rebuyPullbackPct: 15,
@@ -27,6 +31,24 @@ export const EXECUTOR_POLICY = Object.freeze({
 const sha = x => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const r2 = x => Math.round(x * 100) / 100;
 function fail(m) { throw new Error('executor_v08:' + m); }
+// Key order is not meaningful: Postgres jsonb stores object keys sorted, so a
+// state read back from the DB has {"ADA":..,"BTC":..} while the env mandate may
+// be {"BTC":..,"ADA":..}. Compare mandates in canonical (sorted-key) form.
+export function canonicalMandate(m) {
+  return JSON.stringify(Object.keys(m || {}).sort().map(k => [k, Number(m[k])]));
+}
+/** Carry a state from a compatible earlier version forward; throws otherwise. */
+export function migrateExecutorState(prev) {
+  if (!EXECUTOR_STATE_COMPATIBLE.includes(prev?.version)) fail('version_mismatch');
+  const s = structuredClone(prev);
+  if (s.version !== EXECUTOR_VERSION) {
+    s.migratedFrom = [...(s.migratedFrom || []), s.version];
+    s.version = EXECUTOR_VERSION;
+  }
+  if (!Array.isArray(s.executions)) s.executions = [];
+  if (typeof s.throttled !== 'boolean') s.throttled = false;
+  return s;
+}
 
 export function checkPolicy(p) {
   if (!(p.maxPortfolioFraction > 0 && p.maxPortfolioFraction < 1)) fail('portfolio_fraction_must_be_below_1');
@@ -64,10 +86,9 @@ function validQuote(q, maxSpreadPct) { return q && q.bid > 0 && q.ask >= q.bid &
 export function planMandate({ previous, mandate, postures, postureAt, balances, portfolioUsd, quotes, refPrices = null, depthUsd = null, now = new Date(), policy = EXECUTOR_POLICY, dryRun = true }) {
   if (!dryRun) fail('live_mode_not_available_in_this_build');
   checkPolicy(policy);
-  const s = structuredClone(previous || initialExecutorState(mandate, now));
-  if (s.version !== EXECUTOR_VERSION) fail('version_mismatch');
+  const s = previous ? migrateExecutorState(previous) : initialExecutorState(mandate, now);
   if (s.realOrdersSent !== 0) fail('dry_run_state_has_real_orders');
-  if (JSON.stringify(s.mandate) !== JSON.stringify(mandate)) fail('mandate_changed_requires_new_state');
+  if (canonicalMandate(s.mandate) !== canonicalMandate(mandate)) fail('mandate_changed_requires_new_state');
   const day = new Date(+now).toISOString().slice(0, 10);
   if (s.day !== day) { s.day = day; s.ordersToday = 0; }
   const base = { version: EXECUTOR_VERSION, mode: 'DRY_RUN', at: new Date(+now).toISOString(), realOrdersSent: 0 };
