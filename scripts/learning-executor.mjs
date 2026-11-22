@@ -5,7 +5,7 @@
 // Balances: READ-ONLY Bitso key (BITSO_READONLY_API_KEY/SECRET).
 // Mandate: SHADOW_MANDATE_JSON set by the owner, e.g. {"BTC":0.01249,"ADA":12000}.
 import pg from 'pg';
-import { planMandate, parseMandate, EXECUTOR_BOOKS, EXECUTOR_VERSION } from '../src/learning/executor-v08.mjs';
+import { planMandate, parseMandate, EXECUTOR_BOOKS, EXECUTOR_VERSION, EXECUTOR_STATE_COMPATIBLE } from '../src/learning/executor-v08.mjs';
 import { makeBitsoReadOnlyClient } from '../src/learning/bitso-readonly-client.mjs';
 import { trendPosture } from '../src/learning/trend-filter-v07.mjs';
 import { ledgerHash, TREND_LEDGER_VERSION } from '../src/learning/trend-ledger-v07.mjs';
@@ -89,8 +89,9 @@ try {
       }
     }
   }
-  const prevRow = (await db.query('select snapshot_id,asset_assessments from learning_shadow_v2_evaluations where strategy_version=$1 order by id desc limit 1', [EXECUTOR_VERSION])).rows[0];
-  if (prevRow && String(prevRow.snapshot_id) === String(snap.id)) { duplicate = true; report = prevRow.asset_assessments.executor.report; }
+  // Latest state from this or a state-compatible earlier version (continuity across deploys).
+  const prevRow = (await db.query('select snapshot_id,strategy_version,asset_assessments from learning_shadow_v2_evaluations where strategy_version = any($1::text[]) order by id desc limit 1', [EXECUTOR_STATE_COMPATIBLE])).rows[0];
+  if (prevRow && prevRow.strategy_version === EXECUTOR_VERSION && String(prevRow.snapshot_id) === String(snap.id)) { duplicate = true; report = prevRow.asset_assessments.executor.report; }
   else {
     const out = planMandate({ previous: prevRow?.asset_assessments?.executor?.state || null, mandate, postures, postureAt, balances, portfolioUsd, quotes, refPrices, depthUsd, now });
     report = { ...out.report, dataErrors: errors, unvaluedCurrencies: unvalued };

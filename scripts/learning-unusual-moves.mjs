@@ -18,6 +18,6 @@ for (const [asset, pair] of Object.entries(PAIRS)) {
 // market-wide episodes per month -> only EXTREME is raised as an alert.
 const flagged = out.filter(x => x.level === 'EXTREME');
 console.log('SHADOW_UNUSUAL=' + JSON.stringify({ ok: true, version: UNUSUAL_VERSION, at: now.toISOString(),
-  flagged: flagged.map(x => `${x.asset}:${x.level}:${x.direction}:1h ${x.move1hPct}%/24h ${x.move24hPct}% z${x.z1h}/${x.z24h} vol x${x.volRatio}`),
+  flagged: flagged.map(x => `${x.asset}:${x.level}:24h ${x.direction}/1h ${x.direction1h}:trigger ${x.trigger}:1h ${x.move1hPct}%/24h ${x.move24hPct}% z${x.z1h}/${x.z24h} vol x${x.volRatio}`),
   assets: out.map(x => ({ asset: x.asset, level: x.level, m1h: x.move1hPct ?? null, m24h: x.move24hPct ?? null, z1h: x.z1h ?? null, z24h: x.z24h ?? null, vol: x.volRatio ?? null })),
   errors, affectsPositions: false }));

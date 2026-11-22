@@ -15,6 +15,10 @@ const calm = detectUnusual({ asset: 'BTC', candles: series(800), now: now(800) }
 assert.equal(calm.level, 'NORMAL');
 assert.equal(calm.affectsPositions, false);
 assert.equal(detectUnusual({ asset: 'BTC', candles: series(800, -0.03), now: now(800) }).level, 'EXTREME'); // ~-3% in 1h vs ~0.29% sigma
+{ const u = detectUnusual({ asset: 'BTC', candles: series(800, -0.03), now: now(800) });
+  assert.equal(u.direction1h, 'DOWN'); assert.ok(u.trigger.includes('1h')); }
+{ const u = detectUnusual({ asset: 'BTC', candles: series(800, 0.03), now: now(800) });
+  assert.equal(u.direction1h, 'UP', 'a 1h jump up is labelled UP even if the 24h move is down'); }
 assert.equal(detectUnusual({ asset: 'BTC', candles: series(800, 0.012), now: now(800) }).level, 'UNUSUAL');
 assert.equal(detectUnusual({ asset: 'BTC', candles: series(800, 0, 600), now: now(800) }).level, 'UNUSUAL', 'volume spike x6');
 // Open (unclosed) hour is ignored: the shock candle is still open -> calm.

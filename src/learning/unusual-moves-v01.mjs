@@ -35,7 +35,9 @@ export function detectUnusual({ asset, candles, now = new Date() }) {
   const unusual = Math.abs(z1h) >= 3 || Math.abs(z24h) >= 2.5 || (volRatio != null && volRatio >= 4);
   const pct = x => +((Math.exp(x) - 1) * 100).toFixed(2);
   return { ...base, level: extreme ? 'EXTREME' : unusual ? 'UNUSUAL' : 'NORMAL',
-    direction: r24 >= 0 ? 'UP' : 'DOWN', move1hPct: pct(r1), move24hPct: pct(r24),
+    // direction = 24h move; direction1h = last-hour move; trigger = which z crossed the EXTREME bar.
+    direction: r24 >= 0 ? 'UP' : 'DOWN', direction1h: r1 >= 0 ? 'UP' : 'DOWN',
+    trigger: extreme ? [Math.abs(z1h) >= 5 && '1h', Math.abs(z24h) >= 4 && '24h'].filter(Boolean).join('+') : null, move1hPct: pct(r1), move24hPct: pct(r24),
     z1h: +z1h.toFixed(2), z24h: +z24h.toFixed(2), volRatio: volRatio == null ? null : +volRatio.toFixed(2),
     lastHour: new Date(last.t).toISOString() };
 }
