@@ -88,7 +88,8 @@
     "learning:executor:dryrun": "node scripts/learning-executor.mjs",
     "learning:executor:selftest": "node scripts/learning-executor-v08-selftest.mjs",
     "learning:unusual": "node scripts/learning-unusual-moves.mjs",
-    "learning:unusual:selftest": "node scripts/learning-unusual-moves-selftest.mjs"
+    "learning:unusual:selftest": "node scripts/learning-unusual-moves-selftest.mjs",
+    "learning:trade-client:selftest": "SHADOW_TEST_MODE=1 node scripts/learning-bitso-trade-client-selftest.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
