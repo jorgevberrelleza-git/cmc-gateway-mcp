@@ -21,8 +21,8 @@ Referencia: controles de trading algorítmico tipo MiFID II RTS 6 (art. 12 *kill
 | Presupuesto | No exceder el gasto | ✅ tope de **15 USD/mes** en Render; la revisión diaria alerta al 80% (12 USD) del proyectado | tarea diaria |
 
 ## Pendiente para el go-live (fase B, antes del 31-ene-2027)
-1. Cliente de órdenes **separado** del cliente de solo lectura, con allowlist `POST /api/v3/orders` solo para `btc_usd` y `ada_usd`; órdenes límite con banda en vez de market.
-2. Kill: cancelar todas las órdenes abiertas y bloquear nuevas.
+1. ✅ (PR #36, 21-nov) Cliente de órdenes **separado**, bloqueado y sin conectar: candado revisado en cada orden, límite IOC con banda de precio, libros `btc_usd`/`ada_usd`, topes de 5 a 2,500 USD, diario atómico antes del POST, UNKNOWN bloquea, sin retiros. Dos auditorías independientes. ⏳ Al conectarlo: diario en Postgres con UNIQUE, lock de un proceso, traducción planner→IOC.
+2. ✅ Kill: `cancelShadowOrders` cancela solo las órdenes de Shadow por `origin_id`; el candado bloquea las nuevas al desactivar.
 3. Conciliación de fills reales contra `user_trades` y saldos tras cada orden.
 4. Simulacros: Bitso caído, precio corrupto, doble corrida, Postgres caído, stop disparado, llave revocada.
 5. Respaldo cifrado de Postgres y prueba de restauración.

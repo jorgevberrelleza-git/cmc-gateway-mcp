@@ -9,6 +9,9 @@ import { planMandate, parseMandate, EXECUTOR_BOOKS, EXECUTOR_VERSION, EXECUTOR_S
 import { makeBitsoReadOnlyClient } from '../src/learning/bitso-readonly-client.mjs';
 import { trendPosture } from '../src/learning/trend-filter-v07.mjs';
 import { ledgerHash, TREND_LEDGER_VERSION } from '../src/learning/trend-ledger-v07.mjs';
+import { translatePlannedOrder } from '../src/learning/bitso-order-spec.mjs';
+import { makePgOrderJournal } from '../src/learning/order-journal-pg.mjs';
+const REHEARSAL_ON = String(process.env.SHADOW_REHEARSAL_JOURNAL_ENABLED || 'false').toLowerCase() === 'true';
 
 const fail = m => { throw Error('executor_runner:' + m); };
 if (!process.env.DATABASE_URL) fail('DATABASE_URL_required');
@@ -95,6 +98,31 @@ try {
   else {
     const out = planMandate({ previous: prevRow?.asset_assessments?.executor?.state || null, mandate, postures, postureAt, balances, portfolioUsd, quotes, refPrices, depthUsd, now });
     report = { ...out.report, dataErrors: errors, unvaluedCurrencies: unvalued };
+    // Rehearsal: translate each planned order into the exact limit-IOC spec the live
+    // client would send and journal it (mode REHEARSAL, never sent). Exercises the
+    // UNIQUE origin_id guarantee, caps and formatting against the real database.
+    // Isolated in a savepoint: a journal problem never breaks the executor.
+    if (REHEARSAL_ON && report.orders?.length) {
+      const rehearsal = { journaled: 0, duplicates: 0, errors: [], payloads: [] };
+      const journal = makePgOrderJournal(db, { mode: 'REHEARSAL', snapshotId: snap.id });
+      await db.query('savepoint rehearsal');
+      try {
+        for (const o of report.orders) {
+          let spec;
+          try { spec = translatePlannedOrder(o, quotes[o.asset]); }
+          catch (e) { rehearsal.errors.push(`${o.book}:${e.message}`); continue; }
+          const fresh = await journal.appendIfAbsent(spec.originId, { ...spec, reason: o.reason,
+            details: { plannedMajor: o.major, plannedNotionalUsd: o.notionalUsd, quote: quotes[o.asset] } });
+          if (fresh) rehearsal.journaled++; else rehearsal.duplicates++;
+          rehearsal.payloads.push({ book: spec.book, side: spec.side, major: spec.major, price: spec.price, time_in_force: 'immediateorcancel', origin_id: spec.originId });
+        }
+        await db.query('release savepoint rehearsal');
+      } catch (e) {
+        await db.query('rollback to savepoint rehearsal');
+        rehearsal.errors.push('journal:' + String(e.message).slice(0, 160));
+      }
+      report.rehearsal = rehearsal;
+    }
     const ins = await db.query(
       'insert into learning_shadow_v2_evaluations (snapshot_id,generated_at,strategy_version,regime,consistency,asset_assessments,external_research_trigger,execution_enabled) values ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,false) on conflict (snapshot_id,strategy_version) do nothing returning id',
       [snap.id, report.at, EXECUTOR_VERSION, JSON.stringify({ kind: 'EXECUTOR_DRY_RUN_MANDATE', action: report.action, realOrdersSent: 0 }),
@@ -110,4 +138,5 @@ finally { await db.end(); }
 console.log('SHADOW_EXECUTOR=' + JSON.stringify({ ok: true, saved, duplicate, version: EXECUTOR_VERSION, mode: 'DRY_RUN', action: report.action, why: report.why,
   wouldSend: (report.orders || []).map(o => ({ book: o.book, side: o.side, major: o.major, notionalUsd: o.notionalUsd, reason: o.reason })),
   mandate: report.mandate || null, sleeves: report.sleeves || null, stopped: report.stopped ?? null,
+  rehearsal: report.rehearsal || null,
   dataErrors: report.dataErrors || [], unvaluedCurrencies: report.unvaluedCurrencies || [], realOrdersSent: 0 }));
