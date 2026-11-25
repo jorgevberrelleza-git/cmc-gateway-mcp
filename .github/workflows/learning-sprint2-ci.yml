@@ -126,6 +126,9 @@ jobs:
       - name: Shadow fill reconciliation self-test
         run: npm run learning:reconcile:selftest
 
+      - name: Shadow paper competition (rotation vs BTC trend) self-test
+        run: npm run learning:rotation:selftest
+
   postgres-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10

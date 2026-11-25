@@ -353,6 +353,14 @@ if(String(process.env.LEARNING_UNUSUAL_MOVES_ENABLED||'false').toLowerCase()==='
   unusualMoves={attempted:true,ok:run.status===0&&Boolean(line),summary:line?line.slice(0,4000):null,stderr_tail:String(run.stderr||'').trim().slice(-500),affects_positions:false};
 }
 
+// Paper competition (ROTATE_TOP1 vs BTC_TREND), Kraken public data, no orders. Runs in lean mode too.
+let rotationPaper=null;
+if(String(process.env.LEARNING_ROTATION_PAPER_ENABLED||'false').toLowerCase()==='true' && collectorOk){
+  const run=spawnSync('npm',['run','learning:rotation:paper'],{encoding:'utf8',env:process.env,timeout:45000,maxBuffer:512*1024});
+  const line=String(run.stdout||'').split(/\r?\n/).find(x=>x.startsWith('SHADOW_ROTATION='))||null;
+  rotationPaper={attempted:true,ok:run.status===0&&Boolean(line),summary:line?line.slice(0,6000):null,stderr_tail:String(run.stderr||'').trim().slice(-500),real_orders_created:0};
+}
+
 // Daily evidence-only counterfactual: no trading or queue threshold changes.
 let eventNoiseAudit=null;
 if (String((LEAN?undefined:process.env.LEARNING_EVENT_NOISE_AUDIT) || 'false').toLowerCase()==='true'
@@ -414,6 +422,7 @@ console.log(JSON.stringify({
   trend_ledger_v07: trendLedgerV07,
   executor: executorDryRun,
   unusual_moves: unusualMoves,
+  rotation_paper: rotationPaper,
   groq_canary: groqCanary,
   execution_enabled: false
 }, null, 2));
@@ -428,6 +437,9 @@ console.log('SHADOW_DECISION_SUMMARY=' + JSON.stringify({
   paperLedger: led ? { action: led.action, equityUsd: led.marks?.equityUsd ?? null, ddPct: led.marks?.drawdownPct ?? null, wouldHalt: led.wouldHalt, dataErrors: led.dataErrors?.length ?? 0 } : (trendLedgerV07 ? { ok: false } : null),
   executor: exe ? { action: exe.action, why: exe.why, wouldSend: exe.wouldSend, mandateUsd: exe.mandate?.valueUsd ?? null, hold: exe.hold ?? null, quoteDevPct: exe.quoteCheck ? Object.fromEntries(Object.entries(exe.quoteCheck).map(([a, v]) => [a, v.devPct])) : null, mandateDdPct: exe.mandate?.drawdownPct ?? null, capUsd: exe.mandate?.capUsd ?? null, sleeves: exe.sleeves, stopped: exe.stopped, dataErrors: exe.dataErrors, unvalued: exe.unvaluedCurrencies, rehearsal: exe.rehearsal ? { journaled: exe.rehearsal.journaled, duplicates: exe.rehearsal.duplicates, errors: exe.rehearsal.errors, payloads: exe.rehearsal.payloads } : null } : (executorDryRun ? { ok: false, error: (String(executorDryRun.stderr_tail || '').match(/^\s*(?:Uncaught )?\w*Error: .*$/m)?.[0]?.trim().slice(0, 200) ?? null), stderr: executorDryRun.stderr_tail?.slice(-300) } : null),
   unusual: (() => { const u = parseLine(unusualMoves, 'SHADOW_UNUSUAL='); return u ? { extreme: u.flagged, watch: u.watch || [], errors: u.errors?.length || 0 } : null; })(),
+  rotation: (() => { const r = parseLine(rotationPaper, 'SHADOW_ROTATION='); return r ? { since: r.startedAt, startUsd: r.startUsd, holdUsd: r.holdMandateUsd,
+    accounts: Object.fromEntries(Object.entries(r.accounts || {}).map(([k, v]) => [k, { holding: v.holding, equityUsd: v.equityUsd, extraVsHoldUsd: v.extraVsHoldUsd, extraVsHoldPct: v.extraVsHoldPct, action: v.action, why: v.why }])),
+    leaders: (r.signals || []).filter(x => x.posture === 'RISK_ON').map(x => `${x.asset}:${x.mom90Pct}%`), errors: r.dataErrors?.length || 0 } : (rotationPaper ? { ok: false, stderr: rotationPaper.stderr_tail?.slice(-200) } : null); })(),
   realOrders: 0, executionEnabled: false
 }));
 if (!ok) process.exitCode = 1;
