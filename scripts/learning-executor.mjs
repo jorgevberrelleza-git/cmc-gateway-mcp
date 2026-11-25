@@ -5,6 +5,7 @@
 // Balances: READ-ONLY Bitso key (BITSO_READONLY_API_KEY/SECRET).
 // Mandate: SHADOW_MANDATE_JSON set by the owner, e.g. {"BTC":0.01249,"ADA":12000}.
 import pg from 'pg';
+import { holdVsMandate, quoteCheck } from '../src/learning/mandate-metrics-v01.mjs';
 import { planMandate, parseMandate, EXECUTOR_BOOKS, EXECUTOR_VERSION, EXECUTOR_STATE_COMPATIBLE } from '../src/learning/executor-v08.mjs';
 import { makeBitsoReadOnlyClient } from '../src/learning/bitso-readonly-client.mjs';
 import { trendPosture } from '../src/learning/trend-filter-v07.mjs';
@@ -139,4 +140,6 @@ console.log('SHADOW_EXECUTOR=' + JSON.stringify({ ok: true, saved, duplicate, ve
   wouldSend: (report.orders || []).map(o => ({ book: o.book, side: o.side, major: o.major, notionalUsd: o.notionalUsd, reason: o.reason })),
   mandate: report.mandate || null, sleeves: report.sleeves || null, stopped: report.stopped ?? null,
   rehearsal: report.rehearsal || null,
+  hold: holdVsMandate({ mandate, quotes, mandateUsd: report.mandate?.valueUsd }),
+  quoteCheck: quoteCheck({ quotes, refPrices }),
   dataErrors: report.dataErrors || [], unvaluedCurrencies: report.unvaluedCurrencies || [], realOrdersSent: 0 }));
