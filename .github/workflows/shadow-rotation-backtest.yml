@@ -1,0 +1,31 @@
+name: Shadow rotation backtest (research)
+on:
+  pull_request:
+    paths:
+      - 'scripts/learning-rotation-backtest*'
+      - '.github/workflows/shadow-rotation-backtest.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rotation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LEARNING_EXECUTION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Selftest (synthetic)
+        run: node scripts/learning-rotation-backtest-selftest.mjs
+      - name: Binance SPOT daily 2020-12..2026-10, official checksums
+        run: python3 scripts/learning-time-machine-fetch.py --start=2020-12 --end=2026-10 --interval=1d --symbols=BTC,ETH,SOL,XRP,ADA,AAVE --dest=data/rotation
+      - name: Walk-forward rotation backtest
+        run: node scripts/learning-rotation-backtest.mjs --manifest=data/rotation/manifest.json --root=data/rotation
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shadow-rotation-backtest
+          path: artifacts/rotation/rotation-backtest.json
+          retention-days: 14
