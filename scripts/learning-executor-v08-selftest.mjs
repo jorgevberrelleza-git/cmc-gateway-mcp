@@ -142,4 +142,18 @@ const src = ['../src/learning/bitso-readonly-client.mjs', '../src/learning/execu
   .map(p => fs.readFileSync(new URL(p, import.meta.url), 'utf8')).join('\n');
 assert.ok(!/['"]POST['"]|['"]DELETE['"]|\/api\/v3\/orders/.test(src), 'no order-sending code in the dry-run build');
 
+
+// Owner metric (extra vs HOLD) and Bitso-vs-Kraken quote check, computed in-engine.
+{
+  const { holdVsMandate, quoteCheck } = await import('../src/learning/mandate-metrics-v01.mjs');
+  const q = { BTC: { bid: 63900, ask: 64100 }, ADA: { bid: 0.1499, ask: 0.1501 } };
+  const h = holdVsMandate({ mandate: { BTC: 0.01249, ADA: 12000 }, quotes: q, mandateUsd: 2299.7 });
+  assert.equal(h.holdUsd, 2599.36); assert.equal(h.extraUsd, -299.66); assert.equal(h.extraPct, -11.53);
+  assert.equal(holdVsMandate({ mandate: { BTC: 1 }, quotes: {}, mandateUsd: 10 }), null, 'no quote -> no metric, never a guess');
+  assert.equal(holdVsMandate({ mandate: { BTC: 1 }, quotes: q, mandateUsd: null }), null);
+  // The suspected 2026-11-20 exit: Bitso ~55.6k while Kraken ~64k -> flagged.
+  const c = quoteCheck({ quotes: { BTC: { bid: 55500, ask: 55700 }, ADA: q.ADA }, refPrices: { BTC: 64000, ADA: 0.15 } });
+  assert.equal(c.BTC.warn, true); assert.ok(c.BTC.devPct < -12); assert.equal(c.ADA.warn, false);
+  assert.deepEqual(quoteCheck({ quotes: { BTC: q.BTC }, refPrices: {} }).BTC, { devPct: null });
+}
 console.log('SHADOW_EXECUTOR_V08_SELFTEST=' + JSON.stringify({ ok: true, version: EXECUTOR_VERSION, mandateOnly: true, sellsOnRiskOff: true, takeProfitHalf: true, rebuyOnPullback: true, sleevesIsolated: true, capBelow100: true, accountStopLatches: true, failClosed: true, priceCollar: true, maxOrderValue: true, depthAware: true, executionThrottle: true, jsonbRoundTrip: true, deployContinuity: true, realOrdersSent: 0 }));
