@@ -17,6 +17,7 @@ import zipfile
 
 BASE_URL = "https://data.binance.vision/data/spot/monthly/klines"
 SYMBOLS = {"BTC": "BTCUSDT", "ADA": "ADAUSDT", "AAVE": "AAVEUSDT"}
+ALLOWED_EXTRA = {"ETH": "ETHUSDT", "SOL": "SOLUSDT", "XRP": "XRPUSDT", "LTC": "LTCUSDT"}
 
 
 def months_between(start, end):
@@ -80,10 +81,18 @@ def main():
     p.add_argument("--end", default="2026-10")
     p.add_argument("--interval", choices=["1d", "1h"], default="1d")
     p.add_argument("--dest", default="data/time-machine")
+    p.add_argument("--symbols", default="", help="comma list from the allowlist, e.g. BTC,ETH,SOL")
     args = p.parse_args()
     for date in [args.start, args.end]:
         if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", date):
             raise ValueError("invalid_month")
+    global SYMBOLS
+    if args.symbols:
+        allowed = {**SYMBOLS, **ALLOWED_EXTRA}
+        wanted = [x.strip().upper() for x in args.symbols.split(",") if x.strip()]
+        if not wanted or any(w not in allowed for w in wanted):
+            raise ValueError("symbol_not_allowed")
+        SYMBOLS = {w: allowed[w] for w in wanted}
     months = list(months_between(args.start, args.end))
     if not months or len(months) > 72:
         raise ValueError("invalid_month_range")
