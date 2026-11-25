@@ -47,13 +47,22 @@ export const POLICIES = {
   ROTATE_TOP2: { rebalance: 'weekly', fn: ctx => topK(ctx, 2) },
   ROTATE_TOP3: { rebalance: 'weekly', fn: ctx => topK(ctx, 3) }
 };
+// POST-HOC DIAGNOSTICS (added after seeing the first run; NEVER eligible for selection):
+// measure how much of the BTC/ADA mandate loss is false-signal churn around the SMA200.
+export const DIAGNOSTICS = {
+  DIAG_MANDATE_BAND3: { rebalance: 'daily', band: 0.03, fn: ({ assets, aboveBand }) => Object.fromEntries(assets.map(a => [a, a === 'BTC' ? (aboveBand('BTC') ? 0.3 : 0) : a === 'ADA' ? (aboveBand('ADA') ? 0.7 : 0) : 0])) },
+  DIAG_ADA_TREND: { rebalance: 'daily', fn: ({ assets, above }) => Object.fromEntries(assets.map(a => [a, a === 'ADA' && above('ADA') ? 1 : 0])) },
+  DIAG_BTC_TREND: { rebalance: 'daily', fn: ({ assets, above }) => Object.fromEntries(assets.map(a => [a, a === 'BTC' && above('BTC') ? 1 : 0])) },
+  DIAG_HOLD_ADA: { rebalance: 'never', fn: ({ assets }) => Object.fromEntries(assets.map(a => [a, a === 'ADA' ? 1 : 0])) }
+};
 function topK({ assets, above, mom }, k) {
   const ranked = assets.filter(a => above(a) && mom(a) != null && mom(a) > 0).sort((x, y) => mom(y) - mom(x)).slice(0, k);
   return Object.fromEntries(assets.map(a => [a, ranked.includes(a) ? 1 / k : 0])); // unfilled slots stay in cash
 }
 
 export function simulate(panel, policyName, from, to) {
-  const { days, assets, px } = panel, pol = POLICIES[policyName];
+  const { days, assets, px } = panel, pol = POLICIES[policyName] || DIAGNOSTICS[policyName];
+  const held = {};
   const idx = a => assets.indexOf(a);
   let i0 = days.findIndex(d => d >= from); let i1 = days.length - 1; while (days[i1] > to) i1--;
   let w = Object.fromEntries(assets.map(a => [a, 0])), equity = 1, peak = 1, maxDd = 0, turnover = 0, trades = 0;
@@ -77,6 +86,8 @@ export function simulate(panel, policyName, from, to) {
     const ctx = { assets,
       live: a => px[idx(a)][i] != null,
       above: a => { const s = smaAt(px[idx(a)], i, SMA); return s != null && px[idx(a)][i] > s; },
+      aboveBand: a => { const s = smaAt(px[idx(a)], i, SMA), p = px[idx(a)][i]; if (s == null) return false;
+        if (p > s * (1 + (pol.band || 0))) held[a] = true; else if (p < s * (1 - (pol.band || 0))) held[a] = false; return Boolean(held[a]); },
       mom: a => { const p = px[idx(a)]; return i >= MOM && p[i] && p[i - MOM] ? p[i] / p[i - MOM] - 1 : null; } };
     const target = pol.fn(ctx);
     let tv = 0; for (const a of assets) tv += Math.abs((target[a] || 0) - w[a]);
@@ -107,9 +118,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     chosenInTest: test.find(t => t.policy === chosen), select, test, full, realOrders: 0 };
   fs.mkdirSync('artifacts/rotation', { recursive: true });
   fs.writeFileSync('artifacts/rotation/rotation-backtest.json', JSON.stringify(out, null, 2));
-  const row = r => `${r.policy.padEnd(22)} ret ${String(r.returnPct).padStart(7)}%  cagr ${String(r.cagrPct).padStart(6)}%  maxDD ${String(r.maxDdPct).padStart(5)}%  score ${r.score}  years ${JSON.stringify(r.byYear)}`;
+  const row = r => `${r.policy.padEnd(22)} trades ${String(r.rebalances).padStart(3)}  ret ${String(r.returnPct).padStart(7)}%  cagr ${String(r.cagrPct).padStart(6)}%  maxDD ${String(r.maxDdPct).padStart(5)}%  score ${r.score}  years ${JSON.stringify(r.byYear)}`;
   console.log('== SELECT (2021-07..2024-12) =='); select.forEach(r => console.log(row(r)));
   console.log(`== CHOSEN: ${chosen} ==`); console.log('== TEST (2025-01..' + last + ') =='); test.forEach(r => console.log(row(r)));
   console.log('== FULL =='); full.forEach(r => console.log(row(r)));
+  console.log('== POST-HOC DIAGNOSTICS (not eligible for selection) ==');
+  for (const d of Object.keys(DIAGNOSTICS)) { console.log('  select ' + row(simulate(panel, d, ...SELECT))); console.log('  test   ' + row(simulate(panel, d, TEST_FROM, last))); }
   console.log('SHADOW_ROTATION_BACKTEST=' + JSON.stringify({ chosen, test: out.chosenInTest, realOrders: 0 }));
 }
