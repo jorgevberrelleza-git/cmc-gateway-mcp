@@ -439,7 +439,7 @@ console.log('SHADOW_DECISION_SUMMARY=' + JSON.stringify({
   unusual: (() => { const u = parseLine(unusualMoves, 'SHADOW_UNUSUAL='); return u ? { extreme: u.flagged, watch: u.watch || [], errors: u.errors?.length || 0 } : null; })(),
   rotation: (() => { const r = parseLine(rotationPaper, 'SHADOW_ROTATION='); return r ? { since: r.startedAt, startUsd: r.startUsd, holdUsd: r.holdMandateUsd,
     accounts: Object.fromEntries(Object.entries(r.accounts || {}).map(([k, v]) => [k, { holding: v.holding, equityUsd: v.equityUsd, extraVsHoldUsd: v.extraVsHoldUsd, extraVsHoldPct: v.extraVsHoldPct, action: v.action, why: v.why, decisions: v.decisions ? `${v.decisions.hits}/${v.decisions.graded} graded, ${v.decisions.total} total` : null }])),
-    leaders: (r.signals || []).filter(x => x.posture === 'RISK_ON').map(x => `${x.asset}:${x.mom90Pct}%`), errors: r.dataErrors?.length || 0 } : (rotationPaper ? { ok: false, stderr: rotationPaper.stderr_tail?.slice(-200) } : null); })(),
+    fearGreed: r.fearGreed?.value ?? null, leaders: (r.signals || []).filter(x => x.posture === 'RISK_ON').map(x => `${x.asset}:${x.mom90Pct}%`), errors: r.dataErrors?.length || 0 } : (rotationPaper ? { ok: false, stderr: rotationPaper.stderr_tail?.slice(-200) } : null); })(),
   realOrders: 0, executionEnabled: false
 }));
 if (!ok) process.exitCode = 1;

@@ -68,7 +68,28 @@ assert.ok(cash.report.accounts.BTC_TREND.extraVsHoldPct != null);
   const miss = scoreDecisions([{ result: { hit: false, edgePct: -4 } }, { result: { hit: true, edgePct: 6 } }, { result: null }]);
   assert.deepEqual(miss, { total: 3, graded: 2, hits: 1, hitPct: 50, avgEdgePct: 1 });
 }
+
+// Euphoria brake (BTC_TREND_GUARD): Fear & Greed >= 75 -> cash; re-enter only below 70; missing -> hold.
+{
+  const fgAt = (v, days) => ({ fearGreed: v, day: new Date(start + (days - 1) * DAY).toISOString().slice(0, 10) });
+  let g = stepRotationPaper({ previous: null, signals: signalsAt(306, M), lastPx: px(306, M), sentiment: fgAt(50, 306), now: at(306) });
+  assert.equal(g.state.accounts.BTC_TREND_GUARD.asset, 'BTC', 'calm market -> same as BTC_TREND');
+  g = stepRotationPaper({ previous: g.state, signals: signalsAt(307, M), lastPx: px(307, M), sentiment: fgAt(80, 307), now: at(307) });
+  assert.equal(g.state.accounts.BTC_TREND_GUARD.asset, null); assert.equal(g.report.accounts.BTC_TREND_GUARD.euphoric, true);
+  assert.equal(g.state.accounts.BTC_TREND.asset, 'BTC', 'unguarded account unaffected');
+  g = stepRotationPaper({ previous: g.state, signals: signalsAt(308, M), lastPx: px(308, M), sentiment: fgAt(72, 308), now: at(308) });
+  assert.equal(g.state.accounts.BTC_TREND_GUARD.asset, null, 'hysteresis: 72 is not low enough to re-enter');
+  g = stepRotationPaper({ previous: g.state, signals: signalsAt(309, M), lastPx: px(309, M), sentiment: fgAt(65, 309), now: at(309) });
+  assert.equal(g.state.accounts.BTC_TREND_GUARD.asset, 'BTC', 're-enters below 70');
+  const miss = stepRotationPaper({ previous: g.state, signals: signalsAt(310, M), lastPx: px(310, M), sentiment: null, now: at(310) });
+  assert.equal(miss.report.accounts.BTC_TREND_GUARD.why, 'sentiment_unavailable'); assert.equal(miss.state.accounts.BTC_TREND_GUARD.asset, 'BTC');
+  // Late joiner: a live state without the account gets it with extra vs HOLD = 0 at join.
+  const old = structuredClone(g.state); delete old.accounts.BTC_TREND_GUARD;
+  const j = stepRotationPaper({ previous: old, signals: signalsAt(311, M), lastPx: px(311, M), sentiment: fgAt(80, 311), now: at(311) });
+  assert.equal(j.report.accounts.BTC_TREND_GUARD.extraVsHoldUsd, 0); assert.ok(j.report.accounts.BTC_TREND_GUARD.joinedAt);
+  assert.equal(j.state.accounts.BTC_TREND_GUARD.asset, null, 'joins in euphoria -> stays in cash');
+}
 // Paper only: no order code, no keys.
 const src = ['../src/learning/rotation-paper-v01.mjs', './learning-rotation-paper.mjs'].map(p => fs.readFileSync(new URL(p, import.meta.url), 'utf8')).join('\n');
 assert.ok(!/api\/v3\/orders|BITSO_.*SECRET|['"]POST['"]|['"]DELETE['"]/.test(src));
-console.log('SHADOW_ROTATION_SELFTEST=' + JSON.stringify({ ok: true, picksLeader: true, mondayOnly: true, btcTrendDaily: true, failClosed: true, idempotentPerDay: true, decisionsGraded30d: true, realOrders: 0 }));
+console.log('SHADOW_ROTATION_SELFTEST=' + JSON.stringify({ ok: true, picksLeader: true, mondayOnly: true, btcTrendDaily: true, failClosed: true, idempotentPerDay: true, decisionsGraded30d: true, euphoriaBrake: true, lateJoin: true, realOrders: 0 }));

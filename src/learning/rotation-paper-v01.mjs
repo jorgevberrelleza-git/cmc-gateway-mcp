@@ -3,6 +3,9 @@
 //   ROTATE_TOP1 - every Monday close: hold the ONE asset with the best 90-day return
 //                 among those above their SMA200 (and with positive momentum); else cash.
 //   BTC_TREND   - every daily close: hold BTC if above its SMA200, else cash.
+//   BTC_TREND_GUARD (joined 2026-11-25) - BTC_TREND plus a pre-declared euphoria brake:
+//                 go to cash when the Crypto Fear & Greed index is >= 75 and re-enter only
+//                 once it drops below 70 (hysteresis). Hypothesis from PR #44, tested forward.
 // Both chosen by the 2026-11-24 walk-forward backtest (PR #42). Fills at the
 // reference last price with 0.42% per side (Bitso taker + half spread), as in the backtest.
 // Success metric: equity minus the HOLD mandate (0.01249 BTC + 12,000 ADA) scaled to the same start.
@@ -10,10 +13,11 @@ import { trendPosture } from './trend-filter-v07.mjs';
 
 export const ROTATION_VERSION = 'shadow_rotation_paper_v0.1';
 export const ROTATION_UNIVERSE = Object.freeze(['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'AAVE']);
-export const ROTATION_POLICIES = Object.freeze(['ROTATE_TOP1', 'BTC_TREND']);
+export const ROTATION_POLICIES = Object.freeze(['ROTATE_TOP1', 'BTC_TREND', 'BTC_TREND_GUARD']);
+export const EUPHORIA = Object.freeze({ exitAt: 75, reenterBelow: 70, maxAgeHours: 60 });
 export const ROTATION_PARAMS = Object.freeze({ costPerSide: 0.0042, momentumDays: 90, maxCloseAgeHours: 50 });
 const DAY = 86_400_000;
-const r2 = x => Math.round(x * 100) / 100;
+const r2 = x => { const v = Math.round(x * 100) / 100; return v === 0 ? 0 : v; }; // no -0, keeps NaN visible
 
 /** Per-asset signal from Kraken daily candles (closed days only). */
 export function assetSignal({ asset, candles, now }) {
@@ -38,7 +42,7 @@ export function scoreDecisions(list = []) {
 }
 const isMonday = day => new Date(day + 'T00:00:00Z').getUTCDay() === 1;
 
-export function stepRotationPaper({ previous, signals, lastPx, holdMandate = { BTC: 0.01249, ADA: 12000 }, now = new Date() }) {
+export function stepRotationPaper({ previous, signals, lastPx, sentiment = null, holdMandate = { BTC: 0.01249, ADA: 12000 }, now = new Date() }) {
   const cost = ROTATION_PARAMS.costPerSide, errors = [];
   const sig = Object.fromEntries(signals.map(s => [s.asset, s]));
   const holdValue = () => { let v = 0; for (const [a, u] of Object.entries(holdMandate)) { if (!(lastPx[a] > 0)) return null; v += u * lastPx[a]; } return v; };
@@ -49,19 +53,37 @@ export function stepRotationPaper({ previous, signals, lastPx, holdMandate = { B
     s = { version: ROTATION_VERSION, startedAt: now.toISOString(), startUsd: r2(hv), holdStartUsd: hv,
       accounts: Object.fromEntries(ROTATION_POLICIES.map(p => [p, { cashUsd: r2(hv), asset: null, units: 0, lastDecisionDay: null, peakUsd: r2(hv), trades: [] }])) };
   }
+  // Accounts that join after the competition started begin with the HOLD value at join time,
+  // so their extra vs HOLD starts at 0 (same HOLD series as the others).
+  for (const p of ROTATION_POLICIES) {
+    if (s.accounts[p]) continue;
+    const hv0 = holdValue(); if (!(hv0 > 0)) continue;
+    const eq0 = r2(s.startUsd * hv0 / s.holdStartUsd);
+    s.accounts[p] = { cashUsd: eq0, asset: null, units: 0, lastDecisionDay: null, peakUsd: eq0, trades: [], decisions: [], startUsd: eq0, joinedAt: now.toISOString() };
+  }
+  const fg = Number(sentiment?.fearGreed);
+  const fgFresh = Number.isFinite(fg) && sentiment?.day && (+now - Date.parse(sentiment.day)) / 3_600_000 <= EUPHORIA.maxAgeHours;
   // Freshness: every decision uses the same closed day; abstain if candles are stale.
   const lastDay = signals.map(x => x.lastCloseDay).filter(Boolean).sort().pop() || null;
   const fresh = lastDay && (+now - (Date.parse(lastDay) + DAY)) / 3_600_000 <= ROTATION_PARAMS.maxCloseAgeHours;
   const actions = {};
   for (const p of ROTATION_POLICIES) {
     const acc = s.accounts[p]; let action = 'NO_CHANGE', why = null;
-    const due = fresh && acc.lastDecisionDay !== lastDay && (p === 'BTC_TREND' || acc.lastDecisionDay == null || isMonday(lastDay));
+    if (!acc) { actions[p] = { action: 'WAIT', why: 'no_prices_to_join' }; continue; }
+    const daily = p === 'BTC_TREND' || p === 'BTC_TREND_GUARD';
+    const due = fresh && acc.lastDecisionDay !== lastDay && (daily || acc.lastDecisionDay == null || isMonday(lastDay));
     if (!fresh) { action = 'HOLD'; why = 'stale_or_missing_candles'; }
     else if (due) {
-      const target = p === 'ROTATE_TOP1' ? pickTop1(signals) : (sig.BTC?.posture === 'RISK_ON' ? 'BTC' : null);
-      // Fail closed: rotation needs the WHOLE universe (a missing leader must not cause a wrong switch).
-      const abstain = p === 'BTC_TREND' ? sig.BTC?.posture === 'ABSTAIN' : (signals.length < ROTATION_UNIVERSE.length || signals.some(x => x.posture === 'ABSTAIN'));
-      if (abstain) { action = 'HOLD'; why = 'abstain_signal'; }
+      let target = p === 'ROTATE_TOP1' ? pickTop1(signals) : (sig.BTC?.posture === 'RISK_ON' ? 'BTC' : null);
+      if (p === 'BTC_TREND_GUARD' && fgFresh) {
+        if (fg >= EUPHORIA.exitAt) acc.euphoric = true; else if (fg < EUPHORIA.reenterBelow) acc.euphoric = false;
+        if (acc.euphoric) target = null;
+      }
+      // Fail closed: rotation needs the WHOLE universe (a missing leader must not cause a wrong switch);
+      // the guarded account needs a fresh sentiment reading.
+      const abstain = p === 'ROTATE_TOP1' ? (signals.length < ROTATION_UNIVERSE.length || signals.some(x => x.posture === 'ABSTAIN'))
+        : sig.BTC?.posture === 'ABSTAIN' || (p === 'BTC_TREND_GUARD' && !fgFresh);
+      if (abstain) { action = 'HOLD'; why = p === 'BTC_TREND_GUARD' && !fgFresh ? 'sentiment_unavailable' : 'abstain_signal'; }
       else if (target !== acc.asset) {
         const sellPx = acc.asset ? lastPx[acc.asset] : null, buyPx = target ? lastPx[target] : null;
         if ((acc.asset && !(sellPx > 0)) || (target && !(buyPx > 0))) { action = 'HOLD'; why = 'missing_price'; errors.push(`${p}:missing_price`); }
@@ -83,7 +105,7 @@ export function stepRotationPaper({ previous, signals, lastPx, holdMandate = { B
   }
   // Grade decisions that are at least 30 days old: hit = the switch beat staying put, after costs.
   for (const p of ROTATION_POLICIES) {
-    for (const d of s.accounts[p].decisions || []) {
+    for (const d of s.accounts[p]?.decisions || []) {
       if (d.result || +now - Date.parse(d.at) < GRADE_DAYS * DAY) continue;
       const rTo = d.to ? (lastPx[d.to] > 0 ? lastPx[d.to] / d.pxTo - 1 : null) : 0;
       const rFrom = d.from ? (lastPx[d.from] > 0 ? lastPx[d.from] / d.pxFrom - 1 : null) : 0;
@@ -96,17 +118,17 @@ export function stepRotationPaper({ previous, signals, lastPx, holdMandate = { B
   const holdEq = hv > 0 ? s.startUsd * hv / s.holdStartUsd : null;
   const accounts = {};
   for (const p of ROTATION_POLICIES) {
-    const acc = s.accounts[p];
+    const acc = s.accounts[p]; if (!acc) continue;
     const px = acc.asset ? lastPx[acc.asset] : 1;
     const eq = acc.asset ? (px > 0 ? acc.units * px : null) : acc.cashUsd;
     if (eq != null) acc.peakUsd = Math.max(acc.peakUsd, eq);
-    accounts[p] = { holding: acc.asset || 'CASH', equityUsd: eq == null ? null : r2(eq), retPct: eq == null ? null : r2(100 * (eq / s.startUsd - 1)),
+    accounts[p] = { holding: acc.asset || 'CASH', equityUsd: eq == null ? null : r2(eq), retPct: eq == null ? null : r2(100 * (eq / (acc.startUsd ?? s.startUsd) - 1)),
       ddPct: eq == null ? null : r2(100 * (1 - eq / acc.peakUsd)), extraVsHoldUsd: eq != null && holdEq ? r2(eq - holdEq) : null,
       extraVsHoldPct: eq != null && holdEq ? r2(100 * (eq / holdEq - 1)) : null, trades: acc.trades.length,
-      decisions: scoreDecisions(acc.decisions), ...actions[p] };
+      decisions: scoreDecisions(acc.decisions), ...(p === 'BTC_TREND_GUARD' ? { euphoric: Boolean(acc.euphoric), joinedAt: acc.joinedAt } : {}), ...actions[p] };
   }
   return { state: s, report: { version: ROTATION_VERSION, at: now.toISOString(), startedAt: s.startedAt, startUsd: s.startUsd, lastCloseDay: lastDay,
-    holdMandateUsd: holdEq == null ? null : r2(holdEq), accounts,
+    holdMandateUsd: holdEq == null ? null : r2(holdEq), accounts, fearGreed: fgFresh ? { value: fg, day: sentiment.day } : null,
     signals: signals.map(x => ({ asset: x.asset, posture: x.posture, distancePct: x.distancePct, mom90Pct: x.mom90Pct })),
     nextRotationCheck: 'first run after a Monday daily close (UTC)', dataErrors: errors, realOrders: 0 } };
 }
