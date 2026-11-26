@@ -106,7 +106,16 @@ export function simulate(panel, policyName, from, to) {
 }
 const r1 = x => Math.round(x * 10) / 10;
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === `file://${process.argv[1]}` && args.eval) {
+  // Backcast mode: score the FIXED menu on a window never used for selection (e.g. 2018-2020).
+  const [from, to] = args.eval.split('..');
+  const panel = buildPanel(loadCloses({ manifest: args.manifest, root: args.root }));
+  const row = r => `${r.policy.padEnd(22)} trades ${String(r.rebalances).padStart(3)}  ret ${String(r.returnPct).padStart(7)}%  cagr ${String(r.cagrPct).padStart(6)}%  maxDD ${String(r.maxDdPct).padStart(5)}%  years ${JSON.stringify(r.byYear)}`;
+  console.log(`== BACKCAST ${from}..${to} (universe ${panel.assets.join(',')}; selection was done on 2021-07..2024-12) ==`);
+  const res = [...Object.keys(POLICIES), ...Object.keys(DIAGNOSTICS)].map(p => simulate(panel, p, from, to));
+  res.forEach(r => console.log(row(r)));
+  console.log('SHADOW_BACKCAST=' + JSON.stringify(res.map(r => ({ p: r.policy, ret: r.returnPct, dd: r.maxDdPct, years: r.byYear }))));
+} else if (import.meta.url === `file://${process.argv[1]}`) {
   const panel = buildPanel(loadCloses({ manifest: args.manifest, root: args.root }));
   const last = panel.days[panel.days.length - 1];
   const select = Object.keys(POLICIES).map(p => simulate(panel, p, ...SELECT)).sort((a, b) => b.score - a.score);
