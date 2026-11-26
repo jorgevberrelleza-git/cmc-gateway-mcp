@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'scripts/learning-rotation-backtest*'
+      - 'scripts/learning-signal-calibration.mjs'
+      - 'scripts/learning-extra-sources-fetch.py'
       - '.github/workflows/shadow-rotation-backtest.yml'
   workflow_dispatch:
 permissions:
@@ -29,3 +31,7 @@ jobs:
           name: shadow-rotation-backtest
           path: artifacts/rotation/rotation-backtest.json
           retention-days: 14
+      - name: Extra public sources (Fear & Greed, BTC perp funding with checksums)
+        run: python3 scripts/learning-extra-sources-fetch.py --start=2020-12 --end=2026-10 --dest=data/extra
+      - name: Signal calibration (C7) and extra-source study
+        run: node scripts/learning-signal-calibration.mjs --manifest=data/rotation/manifest.json --root=data/rotation --extra=data/extra

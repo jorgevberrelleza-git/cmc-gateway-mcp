@@ -1,0 +1,387 @@
+{
+  "version": "shadow-signal-calibration-v0.1",
+  "horizonDays": 30,
+  "dataEnd": "2026-10-30",
+  "universe": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "XRP",
+    "ADA",
+    "AAVE"
+  ],
+  "sma200": {
+    "select": {
+      "all": {
+        "n": 7680,
+        "nNonOverlap": 252,
+        "hitPct": 41.6,
+        "hitNonOverlapPct": 42.9,
+        "baseUpPct": 52.4,
+        "avgFwdOnPct": -0.2,
+        "avgFwdOffPct": 1.5,
+        "daysOnPct": 52
+      },
+      "byAsset": {
+        "BTC": {
+          "n": 1280,
+          "nNonOverlap": 42,
+          "hitPct": 41.9,
+          "hitNonOverlapPct": 42.9,
+          "baseUpPct": 57.4,
+          "avgFwdOnPct": 0.9,
+          "avgFwdOffPct": 3.2,
+          "daysOnPct": 62.1
+        },
+        "ETH": {
+          "n": 1280,
+          "nNonOverlap": 42,
+          "hitPct": 41,
+          "hitNonOverlapPct": 42.9,
+          "baseUpPct": 48.3,
+          "avgFwdOnPct": -1.8,
+          "avgFwdOffPct": 0.8,
+          "daysOnPct": 43.2
+        },
+        "SOL": {
+          "n": 1280,
+          "nNonOverlap": 42,
+          "hitPct": 43,
+          "hitNonOverlapPct": 40.5,
+          "baseUpPct": 61.3,
+          "avgFwdOnPct": 2.1,
+          "avgFwdOffPct": 4.1,
+          "daysOnPct": 72.3
+        },
+        "XRP": {
+          "n": 1280,
+          "nNonOverlap": 42,
+          "hitPct": 41.3,
+          "hitNonOverlapPct": 42.9,
+          "baseUpPct": 50.9,
+          "avgFwdOnPct": -1,
+          "avgFwdOffPct": 1.5,
+          "daysOnPct": 48.4
+        },
+        "ADA": {
+          "n": 1280,
+          "nNonOverlap": 42,
+          "hitPct": 40.9,
+          "hitNonOverlapPct": 42.9,
+          "baseUpPct": 44.4,
+          "avgFwdOnPct": -2.9,
+          "avgFwdOffPct": -0.3,
+          "daysOnPct": 35
+        },
+        "AAVE": {
+          "n": 1280,
+          "nNonOverlap": 42,
+          "hitPct": 41.3,
+          "hitNonOverlapPct": 45.2,
+          "baseUpPct": 52.2,
+          "avgFwdOnPct": -0.7,
+          "avgFwdOffPct": 1.8,
+          "daysOnPct": 51
+        }
+      }
+    },
+    "test": {
+      "all": {
+        "n": 3828,
+        "nNonOverlap": 126,
+        "hitPct": 42.2,
+        "hitNonOverlapPct": 41.3,
+        "baseUpPct": 51,
+        "avgFwdOnPct": -0.2,
+        "avgFwdOffPct": 1.4,
+        "daysOnPct": 60.3
+      },
+      "byAsset": {
+        "BTC": {
+          "n": 638,
+          "nNonOverlap": 21,
+          "hitPct": 44.8,
+          "hitNonOverlapPct": 47.6,
+          "baseUpPct": 56,
+          "avgFwdOnPct": 1,
+          "avgFwdOffPct": 3,
+          "daysOnPct": 70.7
+        },
+        "ETH": {
+          "n": 638,
+          "nNonOverlap": 21,
+          "hitPct": 40.3,
+          "hitNonOverlapPct": 38.1,
+          "baseUpPct": 46.9,
+          "avgFwdOnPct": -1.8,
+          "avgFwdOffPct": 0.8,
+          "daysOnPct": 52
+        },
+        "SOL": {
+          "n": 638,
+          "nNonOverlap": 21,
+          "hitPct": 45.6,
+          "hitNonOverlapPct": 47.6,
+          "baseUpPct": 59.9,
+          "avgFwdOnPct": 2,
+          "avgFwdOffPct": 4.1,
+          "daysOnPct": 78.2
+        },
+        "XRP": {
+          "n": 638,
+          "nNonOverlap": 21,
+          "hitPct": 41.2,
+          "hitNonOverlapPct": 42.9,
+          "baseUpPct": 49.5,
+          "avgFwdOnPct": -1,
+          "avgFwdOffPct": 1.6,
+          "daysOnPct": 58.2
+        },
+        "ADA": {
+          "n": 638,
+          "nNonOverlap": 21,
+          "hitPct": 39.3,
+          "hitNonOverlapPct": 33.3,
+          "baseUpPct": 42.9,
+          "avgFwdOnPct": -2.9,
+          "avgFwdOffPct": -0.4,
+          "daysOnPct": 42.2
+        },
+        "AAVE": {
+          "n": 638,
+          "nNonOverlap": 21,
+          "hitPct": 42,
+          "hitNonOverlapPct": 38.1,
+          "baseUpPct": 50.8,
+          "avgFwdOnPct": -0.6,
+          "avgFwdOffPct": 1.9,
+          "daysOnPct": 60.8
+        }
+      }
+    }
+  },
+  "rotationPicks": {
+    "select": {
+      "picks": 115,
+      "beatEqualWeightPct": 100,
+      "positivePct": 69.6,
+      "avgEdgeVsEqualWeightPct": 0.5,
+      "cashWeeks": 68,
+      "cashWeeksMarketFellPct": 63.2
+    },
+    "test": {
+      "picks": 66,
+      "beatEqualWeightPct": 100,
+      "positivePct": 63.6,
+      "avgEdgeVsEqualWeightPct": 0.5,
+      "cashWeeks": 28,
+      "cashWeeksMarketFellPct": 64.3
+    }
+  },
+  "fearGreed": {
+    "source": "alternative.me Fear & Greed",
+    "select": {
+      "ON:extremeFear<25": {
+        "n": 175,
+        "nNonOverlap": 7,
+        "avgFwd30Pct": 0.5,
+        "upPct": 46.9
+      },
+      "OFF:extremeFear<25": {
+        "n": 138,
+        "nNonOverlap": 5,
+        "avgFwd30Pct": 2.8,
+        "upPct": 57.2
+      },
+      "ON:fear25-49": {
+        "n": 208,
+        "nNonOverlap": 6,
+        "avgFwd30Pct": 1.1,
+        "upPct": 48.6
+      },
+      "OFF:fear25-49": {
+        "n": 117,
+        "nNonOverlap": 3,
+        "avgFwd30Pct": 3.3,
+        "upPct": 84.6
+      },
+      "ON:greed50-74": {
+        "n": 200,
+        "nNonOverlap": 8,
+        "avgFwd30Pct": 0.8,
+        "upPct": 48
+      },
+      "OFF:greed50-74": {
+        "n": 125,
+        "nNonOverlap": 5,
+        "avgFwd30Pct": 3.9,
+        "upPct": 68.8
+      },
+      "ON:extremeGreed>=75": {
+        "n": 212,
+        "nNonOverlap": 5,
+        "avgFwd30Pct": 1.1,
+        "upPct": 53.8
+      },
+      "OFF:extremeGreed>=75": {
+        "n": 105,
+        "nNonOverlap": 3,
+        "avgFwd30Pct": 3,
+        "upPct": 74.3
+      }
+    },
+    "test": {
+      "ON:extremeFear<25": {
+        "n": 125,
+        "nNonOverlap": 5,
+        "avgFwd30Pct": 1.3,
+        "upPct": 52.8
+      },
+      "OFF:extremeFear<25": {
+        "n": 50,
+        "nNonOverlap": 2,
+        "avgFwd30Pct": 2.3,
+        "upPct": 50
+      },
+      "ON:fear25-49": {
+        "n": 112,
+        "nNonOverlap": 4,
+        "avgFwd30Pct": 1.4,
+        "upPct": 55.4
+      },
+      "OFF:fear25-49": {
+        "n": 43,
+        "nNonOverlap": 0,
+        "avgFwd30Pct": 3.5,
+        "upPct": 88.4
+      },
+      "ON:greed50-74": {
+        "n": 100,
+        "nNonOverlap": 4,
+        "avgFwd30Pct": 1.1,
+        "upPct": 57
+      },
+      "OFF:greed50-74": {
+        "n": 50,
+        "nNonOverlap": 2,
+        "avgFwd30Pct": 2.3,
+        "upPct": 52
+      },
+      "ON:extremeGreed>=75": {
+        "n": 114,
+        "nNonOverlap": 2,
+        "avgFwd30Pct": 0.2,
+        "upPct": 37.7
+      },
+      "OFF:extremeGreed>=75": {
+        "n": 44,
+        "nNonOverlap": 2,
+        "avgFwd30Pct": 4,
+        "upPct": 90.9
+      }
+    }
+  },
+  "funding": {
+    "source": "Binance BTCUSDT perp funding, 7d avg, annualized %",
+    "select": {
+      "ON:negative<0": {
+        "n": 390,
+        "nNonOverlap": 12,
+        "avgFwd30Pct": 0.8,
+        "upPct": 48.7
+      },
+      "OFF:negative<0": {
+        "n": 239,
+        "nNonOverlap": 9,
+        "avgFwd30Pct": 3,
+        "upPct": 69
+      },
+      "ON:normal0-10": {
+        "n": 298,
+        "nNonOverlap": 10,
+        "avgFwd30Pct": 0.9,
+        "upPct": 49.3
+      },
+      "OFF:normal0-10": {
+        "n": 190,
+        "nNonOverlap": 5,
+        "avgFwd30Pct": 3.5,
+        "upPct": 72.1
+      },
+      "ON:hot10-20": {
+        "n": 107,
+        "nNonOverlap": 4,
+        "avgFwd30Pct": 1.1,
+        "upPct": 52.3
+      },
+      "OFF:hot10-20": {
+        "n": 56,
+        "nNonOverlap": 2,
+        "avgFwd30Pct": 3.2,
+        "upPct": 71.4
+      },
+      "ON:crowded>=20": {
+        "n": 0,
+        "nNonOverlap": 0,
+        "avgFwd30Pct": null,
+        "upPct": null
+      },
+      "OFF:crowded>=20": {
+        "n": 0,
+        "nNonOverlap": 0,
+        "avgFwd30Pct": null,
+        "upPct": null
+      }
+    },
+    "test": {
+      "ON:negative<0": {
+        "n": 224,
+        "nNonOverlap": 6,
+        "avgFwd30Pct": 0.7,
+        "upPct": 50.4
+      },
+      "OFF:negative<0": {
+        "n": 91,
+        "nNonOverlap": 3,
+        "avgFwd30Pct": 3.6,
+        "upPct": 68.1
+      },
+      "ON:normal0-10": {
+        "n": 163,
+        "nNonOverlap": 8,
+        "avgFwd30Pct": 1.2,
+        "upPct": 47.9
+      },
+      "OFF:normal0-10": {
+        "n": 69,
+        "nNonOverlap": 1,
+        "avgFwd30Pct": 2.6,
+        "upPct": 76.8
+      },
+      "ON:hot10-20": {
+        "n": 64,
+        "nNonOverlap": 1,
+        "avgFwd30Pct": 1.2,
+        "upPct": 57.8
+      },
+      "OFF:hot10-20": {
+        "n": 27,
+        "nNonOverlap": 2,
+        "avgFwd30Pct": 2.1,
+        "upPct": 51.9
+      },
+      "ON:crowded>=20": {
+        "n": 0,
+        "nNonOverlap": 0,
+        "avgFwd30Pct": null,
+        "upPct": null
+      },
+      "OFF:crowded>=20": {
+        "n": 0,
+        "nNonOverlap": 0,
+        "avgFwd30Pct": null,
+        "upPct": null
+      }
+    }
+  }
+}
