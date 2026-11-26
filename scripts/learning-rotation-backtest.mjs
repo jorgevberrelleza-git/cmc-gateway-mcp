@@ -47,6 +47,18 @@ export const POLICIES = {
   ROTATE_TOP2: { rebalance: 'weekly', fn: ctx => topK(ctx, 2) },
   ROTATE_TOP3: { rebalance: 'weekly', fn: ctx => topK(ctx, 3) }
 };
+// RISK VARIANTS of BTC trend, PRE-DECLARED 2026-11-25 before any result (goal: max drawdown <= 40%
+// in 2018-20, 2021-24 and 2025-26). Not eligible for the original selection.
+const q25 = w => Math.round(w * 4) / 4;
+export const RISK_VARIANTS = {
+  BTC_TREND: { rebalance: 'daily', fn: ({ assets, above }) => Object.fromEntries(assets.map(a => [a, a === 'BTC' && above('BTC') ? 1 : 0])) },
+  BTC_TREND_HALF: { rebalance: 'daily', driftTol: 0.15, fn: ({ assets, above }) => Object.fromEntries(assets.map(a => [a, a === 'BTC' && above('BTC') ? 0.5 : 0])) },
+  BTC_TREND_VOLTARGET40: { rebalance: 'daily', driftTol: 0.15, fn: ({ assets, above, vol30 }) => { const v = vol30('BTC');
+    const w = above('BTC') && v > 0 ? q25(Math.min(1, 0.40 / v)) : 0; return Object.fromEntries(assets.map(a => [a, a === 'BTC' ? w : 0])); } },
+  BTC_TREND_FAST_EXIT: { rebalance: 'daily', fn: ({ assets, above, above50 }) => Object.fromEntries(assets.map(a => [a, a === 'BTC' && above('BTC') && above50('BTC') ? 1 : 0])) },
+  HOLD_BTC: { rebalance: 'never', fn: ({ assets }) => Object.fromEntries(assets.map(a => [a, a === 'BTC' ? 1 : 0])) }
+};
+
 // POST-HOC DIAGNOSTICS (added after seeing the first run; NEVER eligible for selection):
 // measure how much of the BTC/ADA mandate loss is false-signal churn around the SMA200.
 export const DIAGNOSTICS = {
@@ -61,7 +73,7 @@ function topK({ assets, above, mom }, k) {
 }
 
 export function simulate(panel, policyName, from, to) {
-  const { days, assets, px } = panel, pol = POLICIES[policyName] || DIAGNOSTICS[policyName];
+  const { days, assets, px } = panel, pol = POLICIES[policyName] || DIAGNOSTICS[policyName] || RISK_VARIANTS[policyName];
   const held = {};
   const idx = a => assets.indexOf(a);
   let i0 = days.findIndex(d => d >= from); let i1 = days.length - 1; while (days[i1] > to) i1--;
@@ -88,11 +100,15 @@ export function simulate(panel, policyName, from, to) {
       above: a => { const s = smaAt(px[idx(a)], i, SMA); return s != null && px[idx(a)][i] > s; },
       aboveBand: a => { const s = smaAt(px[idx(a)], i, SMA), p = px[idx(a)][i]; if (s == null) return false;
         if (p > s * (1 + (pol.band || 0))) held[a] = true; else if (p < s * (1 - (pol.band || 0))) held[a] = false; return Boolean(held[a]); },
-      mom: a => { const p = px[idx(a)]; return i >= MOM && p[i] && p[i - MOM] ? p[i] / p[i - MOM] - 1 : null; } };
+      mom: a => { const p = px[idx(a)]; return i >= MOM && p[i] && p[i - MOM] ? p[i] / p[i - MOM] - 1 : null; },
+      above50: a => { const s50 = smaAt(px[idx(a)], i, 50); return s50 != null && px[idx(a)][i] > s50; },
+      vol30: a => { const p = px[idx(a)]; if (i < 31) return null; const r = [];
+        for (let k = i - 29; k <= i; k++) { if (!p[k] || !p[k - 1]) return null; r.push(Math.log(p[k] / p[k - 1])); }
+        const m = r.reduce((x, y) => x + y, 0) / r.length; return Math.sqrt(r.reduce((x, y) => x + (y - m) ** 2, 0) / (r.length - 1)) * Math.sqrt(365); } };
     const target = pol.fn(ctx);
     let tv = 0; for (const a of assets) tv += Math.abs((target[a] || 0) - w[a]);
     if (tv > 1e-9 && (pol.rebalance !== 'never' || i === i0)) {
-      if (pol.rebalance === 'daily' && tv < 0.02) continue; // ignore drift-only rebalances
+      if (pol.rebalance === 'daily' && tv < (pol.driftTol ?? 0.02)) continue; // ignore drift-only rebalances
       equity *= 1 - COST * tv; turnover += tv; trades++;
       w = Object.fromEntries(assets.map(a => [a, target[a] || 0]));
     }
@@ -106,7 +122,19 @@ export function simulate(panel, policyName, from, to) {
 }
 const r1 = x => Math.round(x * 10) / 10;
 
-if (import.meta.url === `file://${process.argv[1]}` && args.eval) {
+if (import.meta.url === `file://${process.argv[1]}` && args.variants) {
+  // --variants=backcastManifest:root,mainManifest:root -> three windows, BTC only.
+  const [bc, mn] = args.variants.split(',').map(x => x.split(':'));
+  const pb = buildPanel(loadCloses({ manifest: bc[0], root: bc[1] })), pm = buildPanel(loadCloses({ manifest: mn[0], root: mn[1] }));
+  const windows = [['2018-03-01', '2020-12-31', pb], ['2021-07-01', '2024-12-31', pm], ['2025-01-01', pm.days[pm.days.length - 1], pm]];
+  const out = {};
+  for (const v of Object.keys(RISK_VARIANTS)) {
+    out[v] = windows.map(([f, t, p]) => { const r = simulate(p, v, f, t); return { window: `${f.slice(0, 4)}-${t.slice(0, 4)}`, ret: r.returnPct, dd: r.maxDdPct, calmar: r.maxDdPct ? Math.round(r.cagrPct / r.maxDdPct * 100) / 100 : null, trades: r.rebalances, years: r.byYear }; });
+    const worst = Math.max(...out[v].map(w => w.dd));
+    console.log(`${v.padEnd(22)} worstDD ${String(worst).padStart(5)}%  ${out[v].map(w => `${w.window}: ret ${w.ret}% dd ${w.dd}% calmar ${w.calmar} trades ${w.trades}`).join(' | ')}`);
+  }
+  console.log('SHADOW_RISK_VARIANTS=' + JSON.stringify(out));
+} else if (import.meta.url === `file://${process.argv[1]}` && args.eval) {
   // Backcast mode: score the FIXED menu on a window never used for selection (e.g. 2018-2020).
   const [from, to] = args.eval.split('..');
   const panel = buildPanel(loadCloses({ manifest: args.manifest, root: args.root }));
