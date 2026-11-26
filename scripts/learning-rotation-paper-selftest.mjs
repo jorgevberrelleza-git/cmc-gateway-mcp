@@ -49,7 +49,26 @@ const cash = stepRotationPaper({ previous: o.state, signals: signalsAt(d + 1, M3
 assert.equal(cash.state.accounts.BTC_TREND.asset, null); assert.equal(cash.report.accounts.BTC_TREND.holding, 'CASH');
 assert.ok(cash.report.accounts.BTC_TREND.extraVsHoldPct != null);
 
+
+// C5: each SWITCH is logged and graded 30 days later against "not acting" (after costs).
+{
+  const { scoreDecisions } = await import('../src/learning/rotation-paper-v01.mjs');
+  let st = stepRotationPaper({ previous: null, signals: signalsAt(306, M), lastPx: px(306, M), now: at(306) }).state; // CASH -> SOL, CASH -> BTC
+  const acc = st.accounts.ROTATE_TOP1;
+  assert.equal(acc.decisions.length, 1); assert.equal(acc.decisions[0].to, 'SOL'); assert.equal(acc.decisions[0].result, null);
+  // 10 days later: not graded yet.
+  let o2 = stepRotationPaper({ previous: st, signals: signalsAt(316, M), lastPx: px(316, M), now: at(316) });
+  assert.equal(o2.report.accounts.ROTATE_TOP1.decisions.graded, 0);
+  // 31 days later: SOL kept rising (+0.4%/day) vs staying in cash -> hit.
+  const o3 = stepRotationPaper({ previous: o2.state, signals: signalsAt(337, M), lastPx: px(337, M), now: at(337) });
+  const d = o3.state.accounts.ROTATE_TOP1.decisions[0];
+  assert.equal(d.result.hit, true); assert.ok(d.result.edgePct > 10);
+  assert.equal(o3.report.accounts.ROTATE_TOP1.decisions.hitPct, 100);
+  // A losing switch is graded as a miss.
+  const miss = scoreDecisions([{ result: { hit: false, edgePct: -4 } }, { result: { hit: true, edgePct: 6 } }, { result: null }]);
+  assert.deepEqual(miss, { total: 3, graded: 2, hits: 1, hitPct: 50, avgEdgePct: 1 });
+}
 // Paper only: no order code, no keys.
 const src = ['../src/learning/rotation-paper-v01.mjs', './learning-rotation-paper.mjs'].map(p => fs.readFileSync(new URL(p, import.meta.url), 'utf8')).join('\n');
 assert.ok(!/api\/v3\/orders|BITSO_.*SECRET|['"]POST['"]|['"]DELETE['"]/.test(src));
-console.log('SHADOW_ROTATION_SELFTEST=' + JSON.stringify({ ok: true, picksLeader: true, mondayOnly: true, btcTrendDaily: true, failClosed: true, idempotentPerDay: true, realOrders: 0 }));
+console.log('SHADOW_ROTATION_SELFTEST=' + JSON.stringify({ ok: true, picksLeader: true, mondayOnly: true, btcTrendDaily: true, failClosed: true, idempotentPerDay: true, decisionsGraded30d: true, realOrders: 0 }));

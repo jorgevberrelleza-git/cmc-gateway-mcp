@@ -29,6 +29,13 @@ function pickTop1(signals) {
   const ok = signals.filter(s => s.posture === 'RISK_ON' && s.mom90Pct != null && s.mom90Pct > 0).sort((a, b) => b.mom90Pct - a.mom90Pct);
   return ok[0]?.asset || null;
 }
+export const GRADE_DAYS = 30;
+export function scoreDecisions(list = []) {
+  const graded = list.filter(d => d.result);
+  const hits = graded.filter(d => d.result.hit).length;
+  return { total: list.length, graded: graded.length, hits, hitPct: graded.length ? r2(100 * hits / graded.length) : null,
+    avgEdgePct: graded.length ? r2(graded.reduce((x, d) => x + d.result.edgePct, 0) / graded.length) : null };
+}
 const isMonday = day => new Date(day + 'T00:00:00Z').getUTCDay() === 1;
 
 export function stepRotationPaper({ previous, signals, lastPx, holdMandate = { BTC: 0.01249, ADA: 12000 }, now = new Date() }) {
@@ -59,6 +66,10 @@ export function stepRotationPaper({ previous, signals, lastPx, holdMandate = { B
         const sellPx = acc.asset ? lastPx[acc.asset] : null, buyPx = target ? lastPx[target] : null;
         if ((acc.asset && !(sellPx > 0)) || (target && !(buyPx > 0))) { action = 'HOLD'; why = 'missing_price'; errors.push(`${p}:missing_price`); }
         else {
+          // C5: log the decision so it can be graded 30 days later against "not acting".
+          (acc.decisions ||= []).push({ day: lastDay, at: now.toISOString(), from: acc.asset, to: target,
+            pxFrom: acc.asset ? sellPx : null, pxTo: target ? buyPx : null, result: null });
+          acc.decisions = acc.decisions.slice(-50);
           if (acc.asset) { acc.cashUsd += acc.units * sellPx * (1 - cost); acc.trades.push({ day: lastDay, side: 'sell', asset: acc.asset, px: sellPx }); }
           if (target) { acc.units = acc.cashUsd / (buyPx * (1 + cost)); acc.cashUsd = 0; acc.trades.push({ day: lastDay, side: 'buy', asset: target, px: buyPx }); }
           else acc.units = 0;
@@ -70,6 +81,17 @@ export function stepRotationPaper({ previous, signals, lastPx, holdMandate = { B
     }
     actions[p] = { action, why };
   }
+  // Grade decisions that are at least 30 days old: hit = the switch beat staying put, after costs.
+  for (const p of ROTATION_POLICIES) {
+    for (const d of s.accounts[p].decisions || []) {
+      if (d.result || +now - Date.parse(d.at) < GRADE_DAYS * DAY) continue;
+      const rTo = d.to ? (lastPx[d.to] > 0 ? lastPx[d.to] / d.pxTo - 1 : null) : 0;
+      const rFrom = d.from ? (lastPx[d.from] > 0 ? lastPx[d.from] / d.pxFrom - 1 : null) : 0;
+      if (rTo == null || rFrom == null) continue;
+      const edge = rTo - rFrom - 2 * cost;
+      d.result = { gradedAt: now.toISOString(), edgePct: r2(100 * edge), hit: edge > 0 };
+    }
+  }
   const hv = holdValue();
   const holdEq = hv > 0 ? s.startUsd * hv / s.holdStartUsd : null;
   const accounts = {};
@@ -80,7 +102,8 @@ export function stepRotationPaper({ previous, signals, lastPx, holdMandate = { B
     if (eq != null) acc.peakUsd = Math.max(acc.peakUsd, eq);
     accounts[p] = { holding: acc.asset || 'CASH', equityUsd: eq == null ? null : r2(eq), retPct: eq == null ? null : r2(100 * (eq / s.startUsd - 1)),
       ddPct: eq == null ? null : r2(100 * (1 - eq / acc.peakUsd)), extraVsHoldUsd: eq != null && holdEq ? r2(eq - holdEq) : null,
-      extraVsHoldPct: eq != null && holdEq ? r2(100 * (eq / holdEq - 1)) : null, trades: acc.trades.length, ...actions[p] };
+      extraVsHoldPct: eq != null && holdEq ? r2(100 * (eq / holdEq - 1)) : null, trades: acc.trades.length,
+      decisions: scoreDecisions(acc.decisions), ...actions[p] };
   }
   return { state: s, report: { version: ROTATION_VERSION, at: now.toISOString(), startedAt: s.startedAt, startUsd: s.startUsd, lastCloseDay: lastDay,
     holdMandateUsd: holdEq == null ? null : r2(holdEq), accounts,
