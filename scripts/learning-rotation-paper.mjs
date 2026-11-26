@@ -27,6 +27,14 @@ for (const a of ROTATION_UNIVERSE) {
     const v = Number(Object.values(j.result)[0]?.c?.[0]); if (!(v > 0)) throw Error('bad_last'); lastPx[a] = v;
   } catch (e) { dataErrors.push(`${a}:last:${e.message}`); }
 }
+// Sentiment for the guarded account (public, no key). Missing -> that account holds (fail closed).
+let sentiment = null;
+try {
+  const j = await getJson('https://api.alternative.me/fng/?limit=1&format=json');
+  const x = j?.data?.[0]; const v = Number(x?.value), t = Number(x?.timestamp);
+  if (v >= 0 && v <= 100 && t > 0) sentiment = { fearGreed: v, day: new Date(t * 1000).toISOString().slice(0, 10) };
+  else dataErrors.push('fear_greed:bad_payload');
+} catch (e) { dataErrors.push(`fear_greed:${e.message}`); }
 const db = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: process.env.PGSSL === 'disable' ? false : undefined });
 let report = null, saved = false, duplicate = false;
 await db.connect();
@@ -39,7 +47,7 @@ try {
   const prevRow = (await db.query('select snapshot_id,asset_assessments from learning_shadow_v2_evaluations where strategy_version=$1 order by id desc limit 1', [ROTATION_VERSION])).rows[0];
   if (prevRow && String(prevRow.snapshot_id) === String(snap.id)) { duplicate = true; report = prevRow.asset_assessments.rotation.report; }
   else {
-    const out = stepRotationPaper({ previous: prevRow?.asset_assessments?.rotation?.state || null, signals, lastPx, now });
+    const out = stepRotationPaper({ previous: prevRow?.asset_assessments?.rotation?.state || null, signals, lastPx, sentiment, now });
     report = { ...out.report, dataErrors: [...(out.report.dataErrors || []), ...dataErrors] };
     if (out.state) {
       const ins = await db.query(
