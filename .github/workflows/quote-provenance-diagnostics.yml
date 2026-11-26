@@ -1,0 +1,27 @@
+name: Shadow quote provenance diagnostics
+on:
+  push:
+    branches:
+      - feature/quote-provenance-diagnostics-20261108
+  pull_request:
+    paths:
+      - 'src/learning/quote-provenance-diagnostics.mjs'
+      - 'src/learning/data-consistency.mjs'
+      - 'scripts/learning-quote-provenance-diagnostics-selftest.mjs'
+permissions:
+  contents: read
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: node --check src/learning/quote-provenance-diagnostics.mjs && node --check src/learning/data-consistency.mjs && node --check scripts/learning-quote-provenance-diagnostics-selftest.mjs
+      - name: Deterministic quote regression fixtures
+        run: node scripts/learning-quote-provenance-diagnostics-selftest.mjs
+      - name: Existing v2 consistency contract
+        run: node scripts/learning-v2-selftest.mjs

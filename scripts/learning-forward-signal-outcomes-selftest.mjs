@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import {evaluateForwardSignalOutcome as evaluate,summarizeForwardSignalOutcomes as summarize} from '../src/learning/forward-signal-outcomes.mjs';
+const start='2026-11-01T00:00:00Z';
+const s={asset:'BTC',research_signal:'PAPER_REDUCE_REVIEW',price_usd:100,
+ observed_at:start,persisted_before_outcome:true,venue_verified:true};
+const obs=[{asset:'BTC',observed_at:'2026-11-02T00:00:00Z',price_usd:90,source_attested:true}];
+const mature=evaluate({signal:s,observations:obs,horizonHours:24,asOf:'2026-11-02T01:00:00Z'});
+assert.equal(mature.status,'MATURED');
+assert.equal(mature.underlying_return_pct,-10);
+assert.equal(mature.correct_direction,true);
+assert.equal(mature.hypothetical_50pct_reduction_alpha_pp,4.65);
+assert.equal(mature.actionable,false);
+assert.equal(evaluate({signal:s,observations:obs,horizonHours:24,asOf:'2026-11-01T23:59:00Z'}).status,'PENDING');
+assert.equal(evaluate({signal:s,observations:obs,horizonHours:72,asOf:'2026-11-02T01:00:00Z'}).status,'PENDING');
+assert.equal(evaluate({signal:{...s,persisted_before_outcome:false},observations:obs,horizonHours:24,asOf:'2026-11-03T00:00:00Z'}).status,'UNATTESTED');
+assert.equal(evaluate({signal:{...s,venue_verified:false},observations:obs,horizonHours:24,asOf:'2026-11-03T00:00:00Z'}).status,'BLOCKED');
+assert.equal(evaluate({signal:{...s,asset:'AAVE',research_signal:'RISK_RESEARCH_VENUE_BLOCKED',venue_verified:false},observations:obs,horizonHours:24,asOf:'2026-11-03T00:00:00Z'}).status,'BLOCKED');
+const future=[{asset:'BTC',observed_at:'2026-11-02T02:00:00Z',price_usd:1,source_attested:true}];
+assert.equal(evaluate({signal:s,observations:future,horizonHours:24,asOf:'2026-11-02T01:00:00Z'}).status,'MISSING');
+assert.equal(evaluate({signal:s,observations:[{asset:'BTC',observed_at:'2026-11-01T23:59:00Z',price_usd:10}],horizonHours:24,asOf:'2026-11-02T01:00:00Z'}).status,'MISSING');
+const up=evaluate({signal:s,observations:[{asset:'BTC',observed_at:obs[0].observed_at,price_usd:110,source_attested:true}],horizonHours:24,asOf:'2026-11-02T01:00:00Z'});
+assert.equal(up.correct_direction,false);
+assert.equal(up.hypothetical_50pct_reduction_alpha_pp,-5.35);
+assert.equal(summarize([mature,up]).directional_hit_rate_pct,50);
+assert.equal(summarize([mature]).statistically_actionable,false);
+assert.throws(()=>evaluate({signal:s,horizonHours:8}),/unsupported_horizon/);
+console.log('forward-signal-outcomes-selftest: ok');
