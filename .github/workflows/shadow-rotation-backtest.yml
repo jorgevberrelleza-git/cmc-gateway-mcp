@@ -4,6 +4,7 @@ on:
     paths:
       - 'scripts/learning-rotation-backtest*'
       - 'scripts/learning-signal-calibration.mjs'
+      - 'scripts/learning-merge-manifests.mjs'
       - 'scripts/learning-extra-sources-fetch.py'
       - '.github/workflows/shadow-rotation-backtest.yml'
   workflow_dispatch:
@@ -35,3 +36,10 @@ jobs:
         run: python3 scripts/learning-extra-sources-fetch.py --start=2020-12 --end=2026-10 --dest=data/extra
       - name: Signal calibration (C7) and extra-source study
         run: node scripts/learning-signal-calibration.mjs --manifest=data/rotation/manifest.json --root=data/rotation --extra=data/extra
+      - name: Backcast data 2017-2020 (Binance SPOT, per listing date, official checksums)
+        run: |
+          python3 scripts/learning-time-machine-fetch.py --start=2017-08 --end=2020-12 --interval=1d --symbols=BTC,ETH --dest=data/backcast/btceth
+          python3 scripts/learning-time-machine-fetch.py --start=2018-05 --end=2020-12 --interval=1d --symbols=ADA,XRP --dest=data/backcast/adaxrp
+          node scripts/learning-merge-manifests.mjs data/backcast data/backcast/btceth data/backcast/adaxrp
+      - name: Backcast 2018-03..2020-12 (window never used for selection)
+        run: node scripts/learning-rotation-backtest.mjs --manifest=data/backcast/manifest.json --root=data/backcast --eval=2018-03-01..2020-12-31
