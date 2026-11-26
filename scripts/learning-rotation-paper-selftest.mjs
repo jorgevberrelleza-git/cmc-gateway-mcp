@@ -89,7 +89,28 @@ assert.ok(cash.report.accounts.BTC_TREND.extraVsHoldPct != null);
   assert.equal(j.report.accounts.BTC_TREND_GUARD.extraVsHoldUsd, 0); assert.ok(j.report.accounts.BTC_TREND_GUARD.joinedAt);
   assert.equal(j.state.accounts.BTC_TREND_GUARD.asset, null, 'joins in euphoria -> stays in cash');
 }
+
+// Risk variants (PR #48): FAST_EXIT needs SMA200 AND SMA50; HALF invests 50% and keeps 50% cash.
+{
+  const fg = { fearGreed: 40, day: new Date(start + 305 * DAY).toISOString().slice(0, 10) };
+  let r = stepRotationPaper({ previous: null, signals: signalsAt(306, M), lastPx: px(306, M), sentiment: fg, now: at(306) });
+  assert.equal(r.state.accounts.BTC_FAST_EXIT.asset, 'BTC'); assert.equal(r.state.accounts.BTC_TREND_HALF.asset, 'BTC');
+  const half = r.state.accounts.BTC_TREND_HALF;
+  assert.ok(Math.abs(half.cashUsd - r.report.startUsd / 2) < 0.01, 'half stays in cash');
+  assert.ok(Math.abs(r.report.accounts.BTC_TREND_HALF.equityUsd - r.report.startUsd * (1 - 0.5 * 0.0042 / 1.0042)) < 0.05, 'cost only on the invested half');
+  // BTC dips ~5% over 3 weeks: below SMA50 but still above SMA200 -> FAST_EXIT exits, BTC_TREND stays.
+  const Md = { ...M, BTC: i => i < 300 ? M.BTC(i) : M.BTC(299) * (1 - 0.0025 * (i - 299)) };
+  const sAt = signalsAt(321, Md); assert.equal(sAt[0].posture, 'RISK_ON'); assert.equal(sAt[0].above50, false);
+  r = stepRotationPaper({ previous: r.state, signals: sAt, lastPx: px(321, Md), sentiment: { ...fg, day: new Date(start + 320 * DAY).toISOString().slice(0, 10) }, now: at(321) });
+  assert.equal(r.state.accounts.BTC_FAST_EXIT.asset, null, 'fast exit leaves below SMA50');
+  assert.equal(r.state.accounts.BTC_TREND.asset, 'BTC', 'plain trend still holds');
+  assert.equal(r.state.accounts.BTC_TREND_HALF.asset, 'BTC');
+  // Selling HALF returns everything to cash and equity = cash.
+  const Mx = { ...Md, BTC: i => i < 300 ? M.BTC(i) : M.BTC(299) * 0.6 };
+  r = stepRotationPaper({ previous: r.state, signals: signalsAt(322, Mx), lastPx: px(322, Mx), sentiment: { ...fg, day: new Date(start + 321 * DAY).toISOString().slice(0, 10) }, now: at(322) });
+  assert.equal(r.state.accounts.BTC_TREND_HALF.asset, null); assert.equal(r.report.accounts.BTC_TREND_HALF.equityUsd, Math.round(r.state.accounts.BTC_TREND_HALF.cashUsd * 100) / 100);
+}
 // Paper only: no order code, no keys.
 const src = ['../src/learning/rotation-paper-v01.mjs', './learning-rotation-paper.mjs'].map(p => fs.readFileSync(new URL(p, import.meta.url), 'utf8')).join('\n');
 assert.ok(!/api\/v3\/orders|BITSO_.*SECRET|['"]POST['"]|['"]DELETE['"]/.test(src));
-console.log('SHADOW_ROTATION_SELFTEST=' + JSON.stringify({ ok: true, picksLeader: true, mondayOnly: true, btcTrendDaily: true, failClosed: true, idempotentPerDay: true, decisionsGraded30d: true, euphoriaBrake: true, lateJoin: true, realOrders: 0 }));
+console.log('SHADOW_ROTATION_SELFTEST=' + JSON.stringify({ ok: true, picksLeader: true, mondayOnly: true, btcTrendDaily: true, failClosed: true, idempotentPerDay: true, decisionsGraded30d: true, euphoriaBrake: true, lateJoin: true, fastExitSma50: true, halfSizing: true, realOrders: 0 }));
