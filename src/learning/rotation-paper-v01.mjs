@@ -6,6 +6,9 @@
 //   BTC_TREND_GUARD (joined 2026-11-25) - BTC_TREND plus a pre-declared euphoria brake:
 //                 go to cash when the Crypto Fear & Greed index is >= 75 and re-enter only
 //                 once it drops below 70 (hysteresis). Hypothesis from PR #44, tested forward.
+//   BTC_FAST_EXIT (joined 2026-11-26) - BTC only while above BOTH its SMA200 and SMA50, else cash.
+//   BTC_TREND_HALF (joined 2026-11-26) - BTC_TREND with 50% of the account; the rest stays in cash.
+//                 Both pre-declared and backtested on 2018-20, 2021-24 and 2025-26 (PR #48).
 // Both chosen by the 2026-11-24 walk-forward backtest (PR #42). Fills at the
 // reference last price with 0.42% per side (Bitso taker + half spread), as in the backtest.
 // Success metric: equity minus the HOLD mandate (0.01249 BTC + 12,000 ADA) scaled to the same start.
@@ -13,7 +16,8 @@ import { trendPosture } from './trend-filter-v07.mjs';
 
 export const ROTATION_VERSION = 'shadow_rotation_paper_v0.1';
 export const ROTATION_UNIVERSE = Object.freeze(['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'AAVE']);
-export const ROTATION_POLICIES = Object.freeze(['ROTATE_TOP1', 'BTC_TREND', 'BTC_TREND_GUARD']);
+export const ROTATION_POLICIES = Object.freeze(['ROTATE_TOP1', 'BTC_TREND', 'BTC_TREND_GUARD', 'BTC_FAST_EXIT', 'BTC_TREND_HALF']);
+const FRACTION = Object.freeze({ BTC_TREND_HALF: 0.5 });
 export const EUPHORIA = Object.freeze({ exitAt: 75, reenterBelow: 70, maxAgeHours: 60 });
 export const ROTATION_PARAMS = Object.freeze({ costPerSide: 0.0042, momentumDays: 90, maxCloseAgeHours: 50 });
 const DAY = 86_400_000;
@@ -25,8 +29,9 @@ export function assetSignal({ asset, candles, now }) {
   const closed = (candles || []).filter(c => Number.isFinite(+c.t) && +c.close > 0 && +c.t + DAY <= +now).sort((a, b) => a.t - b.t);
   const n = ROTATION_PARAMS.momentumDays;
   const mom = closed.length > n ? closed[closed.length - 1].close / closed[closed.length - 1 - n].close - 1 : null;
+  const sma50 = closed.length >= 50 ? closed.slice(-50).reduce((x, c) => x + c.close, 0) / 50 : null;
   return { asset, posture: p.posture, reason: p.reason, distancePct: p.distancePct ?? null, lastCloseDay: p.lastCloseDay ?? null,
-    mom90Pct: mom == null ? null : r2(100 * mom) };
+    mom90Pct: mom == null ? null : r2(100 * mom), above50: sma50 == null ? null : closed[closed.length - 1].close > sma50 };
 }
 
 function pickTop1(signals) {
@@ -70,11 +75,12 @@ export function stepRotationPaper({ previous, signals, lastPx, sentiment = null,
   for (const p of ROTATION_POLICIES) {
     const acc = s.accounts[p]; let action = 'NO_CHANGE', why = null;
     if (!acc) { actions[p] = { action: 'WAIT', why: 'no_prices_to_join' }; continue; }
-    const daily = p === 'BTC_TREND' || p === 'BTC_TREND_GUARD';
+    const daily = p !== 'ROTATE_TOP1';
     const due = fresh && acc.lastDecisionDay !== lastDay && (daily || acc.lastDecisionDay == null || isMonday(lastDay));
     if (!fresh) { action = 'HOLD'; why = 'stale_or_missing_candles'; }
     else if (due) {
       let target = p === 'ROTATE_TOP1' ? pickTop1(signals) : (sig.BTC?.posture === 'RISK_ON' ? 'BTC' : null);
+      if (p === 'BTC_FAST_EXIT' && sig.BTC?.above50 !== true) target = null;
       if (p === 'BTC_TREND_GUARD' && fgFresh) {
         if (fg >= EUPHORIA.exitAt) acc.euphoric = true; else if (fg < EUPHORIA.reenterBelow) acc.euphoric = false;
         if (acc.euphoric) target = null;
@@ -82,7 +88,7 @@ export function stepRotationPaper({ previous, signals, lastPx, sentiment = null,
       // Fail closed: rotation needs the WHOLE universe (a missing leader must not cause a wrong switch);
       // the guarded account needs a fresh sentiment reading.
       const abstain = p === 'ROTATE_TOP1' ? (signals.length < ROTATION_UNIVERSE.length || signals.some(x => x.posture === 'ABSTAIN'))
-        : sig.BTC?.posture === 'ABSTAIN' || (p === 'BTC_TREND_GUARD' && !fgFresh);
+        : sig.BTC?.posture === 'ABSTAIN' || (p === 'BTC_TREND_GUARD' && !fgFresh) || (p === 'BTC_FAST_EXIT' && sig.BTC?.above50 == null);
       if (abstain) { action = 'HOLD'; why = p === 'BTC_TREND_GUARD' && !fgFresh ? 'sentiment_unavailable' : 'abstain_signal'; }
       else if (target !== acc.asset) {
         const sellPx = acc.asset ? lastPx[acc.asset] : null, buyPx = target ? lastPx[target] : null;
@@ -93,7 +99,7 @@ export function stepRotationPaper({ previous, signals, lastPx, sentiment = null,
             pxFrom: acc.asset ? sellPx : null, pxTo: target ? buyPx : null, result: null });
           acc.decisions = acc.decisions.slice(-50);
           if (acc.asset) { acc.cashUsd += acc.units * sellPx * (1 - cost); acc.trades.push({ day: lastDay, side: 'sell', asset: acc.asset, px: sellPx }); }
-          if (target) { acc.units = acc.cashUsd / (buyPx * (1 + cost)); acc.cashUsd = 0; acc.trades.push({ day: lastDay, side: 'buy', asset: target, px: buyPx }); }
+          if (target) { const spend = acc.cashUsd * (FRACTION[p] ?? 1); acc.units = spend / (buyPx * (1 + cost)); acc.cashUsd -= spend; acc.trades.push({ day: lastDay, side: 'buy', asset: target, px: buyPx }); }
           else acc.units = 0;
           why = `${acc.asset || 'CASH'}->${target || 'CASH'}`; acc.asset = target; action = 'SWITCH';
           acc.trades = acc.trades.slice(-20);
@@ -120,7 +126,7 @@ export function stepRotationPaper({ previous, signals, lastPx, sentiment = null,
   for (const p of ROTATION_POLICIES) {
     const acc = s.accounts[p]; if (!acc) continue;
     const px = acc.asset ? lastPx[acc.asset] : 1;
-    const eq = acc.asset ? (px > 0 ? acc.units * px : null) : acc.cashUsd;
+    const eq = acc.asset ? (px > 0 ? acc.cashUsd + acc.units * px : null) : acc.cashUsd;
     if (eq != null) acc.peakUsd = Math.max(acc.peakUsd, eq);
     accounts[p] = { holding: acc.asset || 'CASH', equityUsd: eq == null ? null : r2(eq), retPct: eq == null ? null : r2(100 * (eq / (acc.startUsd ?? s.startUsd) - 1)),
       ddPct: eq == null ? null : r2(100 * (1 - eq / acc.peakUsd)), extraVsHoldUsd: eq != null && holdEq ? r2(eq - holdEq) : null,
