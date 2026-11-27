@@ -5,6 +5,7 @@ on:
       - 'scripts/learning-rotation-backtest*'
       - 'scripts/learning-signal-calibration.mjs'
       - 'scripts/learning-merge-manifests.mjs'
+      - 'scripts/learning-stooq-fetch.py'
       - 'scripts/learning-extra-sources-fetch.py'
       - '.github/workflows/shadow-rotation-backtest.yml'
   workflow_dispatch:
@@ -45,3 +46,7 @@ jobs:
         run: node scripts/learning-rotation-backtest.mjs --manifest=data/backcast/manifest.json --root=data/backcast --eval=2018-03-01..2020-12-31
       - name: Risk variants of BTC trend across 3 windows (pre-declared 2026-11-25)
         run: node scripts/learning-rotation-backtest.mjs --variants=data/backcast/manifest.json:data/backcast,data/rotation/manifest.json:data/rotation
+      - name: Stocks/ETFs daily closes (stooq)
+        run: python3 scripts/learning-stooq-fetch.py --symbols=SPY,QQQ,AAPL,MSFT,NVDA,GOOGL,AMZN,META --dest=data/stocks
+      - name: Stock rules across 2007-09, 2010-19, 2020-26 (pre-declared 2026-11-26)
+        run: node scripts/learning-rotation-backtest.mjs --stocks=data/stocks
