@@ -59,6 +59,30 @@ export const RISK_VARIANTS = {
   HOLD_BTC: { rebalance: 'never', fn: ({ assets }) => Object.fromEntries(assets.map(a => [a, a === 'BTC' ? 1 : 0])) }
 };
 
+// STOCK RULES, PRE-DECLARED 2026-11-26 before any stock result (owner asked whether falling quality
+// companies are an entry). Windows: 2007-09 (GFC), 2010-19, 2020-26. Benchmarks: HOLD_SPY, HOLD_QQQ.
+const one = (assets, a, w = 1) => Object.fromEntries(assets.map(x => [x, x === a ? w : 0]));
+export const STOCK_RULES = {
+  HOLD_SPY: { rebalance: 'never', fn: ({ assets }) => one(assets, 'SPY') },
+  HOLD_QQQ: { rebalance: 'never', fn: ({ assets }) => one(assets, 'QQQ') },
+  SPY_TREND: { rebalance: 'daily', fn: ({ assets, above }) => one(assets, 'SPY', above('SPY') ? 1 : 0) },
+  QQQ_TREND: { rebalance: 'daily', fn: ({ assets, above }) => one(assets, 'QQQ', above('QQQ') ? 1 : 0) },
+  SPY_FAST_EXIT: { rebalance: 'daily', fn: ({ assets, above, above50 }) => one(assets, 'SPY', above('SPY') && above50('SPY') ? 1 : 0) },
+  // "Buy the correction": enter SPY when it is >= 10% below its 1-year high; hold 252 trading days; else cash.
+  SPY_BUY_CORRECTION: { rebalance: 'daily', fn: ({ assets, dd252, i, state }) => {
+    if (state.until != null && i < state.until) return one(assets, 'SPY');
+    state.until = null; const d = dd252('SPY');
+    if (d != null && d >= 0.10) { state.until = i + 252; return one(assets, 'SPY'); }
+    return one(assets, 'SPY', 0); } },
+  // Same, on falling megacaps: each Monday hold up to 3 megacaps that are >= 20% below their 1-year high
+  // but back above their SMA50 (stabilizing), equal weight; else cash.
+  MEGACAP_DIP_STABILIZED: { rebalance: 'weekly', fn: ({ assets, dd252, above50 }) => {
+    const mc = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META'].filter(a => assets.includes(a));
+    const pick = mc.filter(a => (dd252(a) ?? 0) >= 0.20 && above50(a)).slice(0, 3);
+    return Object.fromEntries(assets.map(a => [a, pick.includes(a) ? 1 / 3 : 0])); } },
+  ROTATE_TOP1: { rebalance: 'weekly', fn: ctx => topK(ctx, 1) }
+};
+
 // POST-HOC DIAGNOSTICS (added after seeing the first run; NEVER eligible for selection):
 // measure how much of the BTC/ADA mandate loss is false-signal churn around the SMA200.
 export const DIAGNOSTICS = {
@@ -73,12 +97,12 @@ function topK({ assets, above, mom }, k) {
 }
 
 export function simulate(panel, policyName, from, to) {
-  const { days, assets, px } = panel, pol = POLICIES[policyName] || DIAGNOSTICS[policyName] || RISK_VARIANTS[policyName];
+  const { days, assets, px } = panel, pol = POLICIES[policyName] || DIAGNOSTICS[policyName] || RISK_VARIANTS[policyName] || STOCK_RULES[policyName];
   const held = {};
   const idx = a => assets.indexOf(a);
   let i0 = days.findIndex(d => d >= from); let i1 = days.length - 1; while (days[i1] > to) i1--;
   let w = Object.fromEntries(assets.map(a => [a, 0])), equity = 1, peak = 1, maxDd = 0, turnover = 0, trades = 0;
-  const curve = [], decisions = [];
+  const curve = [], decisions = [], polState = {};
   for (let i = i0; i <= i1; i++) {
     // 1) earn today's return with yesterday's weights
     if (i > i0) {
@@ -101,6 +125,8 @@ export function simulate(panel, policyName, from, to) {
       aboveBand: a => { const s = smaAt(px[idx(a)], i, SMA), p = px[idx(a)][i]; if (s == null) return false;
         if (p > s * (1 + (pol.band || 0))) held[a] = true; else if (p < s * (1 - (pol.band || 0))) held[a] = false; return Boolean(held[a]); },
       mom: a => { const p = px[idx(a)]; return i >= MOM && p[i] && p[i - MOM] ? p[i] / p[i - MOM] - 1 : null; },
+      i, state: polState,
+      dd252: a => { const p = px[idx(a)]; if (i < 251 || !p[i]) return null; let m = 0; for (let k = i - 251; k <= i; k++) if (p[k] > m) m = p[k]; return 1 - p[i] / m; },
       above50: a => { const s50 = smaAt(px[idx(a)], i, 50); return s50 != null && px[idx(a)][i] > s50; },
       vol30: a => { const p = px[idx(a)]; if (i < 31) return null; const r = [];
         for (let k = i - 29; k <= i; k++) { if (!p[k] || !p[k - 1]) return null; r.push(Math.log(p[k] / p[k - 1])); }
@@ -129,7 +155,24 @@ export function simulate(panel, policyName, from, to) {
 }
 const r1 = x => Math.round(x * 10) / 10;
 
-if (import.meta.url === `file://${process.argv[1]}` && args.variants) {
+if (import.meta.url === `file://${process.argv[1]}` && args.stocks) {
+  const pnl = buildPanel(loadCloses({ manifest: `${args.stocks}/manifest.json`, root: args.stocks }));
+  const last = pnl.days[pnl.days.length - 1];
+  const windows = [['2007-06-01', '2009-12-31'], ['2010-01-01', '2019-12-31'], ['2020-01-01', last]];
+  console.log(`== STOCK RULES (pre-declared 2026-11-26) data ${pnl.days[0]}..${last} universe ${pnl.assets.join(',')} ==`);
+  const res = {};
+  for (const r of Object.keys(STOCK_RULES)) {
+    res[r] = windows.map(([f, t]) => { const x = simulate(pnl, r, f, t); return { w: `${f.slice(0, 4)}-${t.slice(0, 4)}`, ret: x.returnPct, cagr: x.cagrPct, dd: x.maxDdPct, trades: x.rebalances, ds: x.decisionScore }; });
+    console.log(`${r.padEnd(24)} ${res[r].map(w => `${w.w}: ret ${w.ret}% cagr ${w.cagr}% dd ${w.dd}% trades ${w.trades} hits ${w.ds.hits}/${w.ds.graded}`).join(' | ')}`);
+  }
+  // Where are we now? Current postures for the owner (information only).
+  const i = pnl.days.length - 1, now = {};
+  for (const a of pnl.assets) { const p = pnl.px[pnl.assets.indexOf(a)]; let s200 = 0, s50 = 0, m = 0;
+    for (let k = i - 199; k <= i; k++) s200 += p[k]; for (let k = i - 49; k <= i; k++) s50 += p[k]; for (let k = i - 251; k <= i; k++) m = Math.max(m, p[k]);
+    now[a] = { close: p[i], vsSma200Pct: r1(100 * (p[i] / (s200 / 200) - 1)), vsSma50Pct: r1(100 * (p[i] / (s50 / 50) - 1)), offHighPct: r1(100 * (p[i] / m - 1)) }; }
+  console.log('NOW ' + last + ' ' + JSON.stringify(now));
+  console.log('SHADOW_STOCKS=' + JSON.stringify(res));
+} else if (import.meta.url === `file://${process.argv[1]}` && args.variants) {
   // --variants=backcastManifest:root,mainManifest:root -> three windows, BTC only.
   const [bc, mn] = args.variants.split(',').map(x => x.split(':'));
   const pb = buildPanel(loadCloses({ manifest: bc[0], root: bc[1] })), pm = buildPanel(loadCloses({ manifest: mn[0], root: mn[1] }));
