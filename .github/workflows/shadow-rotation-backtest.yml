@@ -43,3 +43,5 @@ jobs:
           node scripts/learning-merge-manifests.mjs data/backcast data/backcast/btceth data/backcast/adaxrp
       - name: Backcast 2018-03..2020-12 (window never used for selection)
         run: node scripts/learning-rotation-backtest.mjs --manifest=data/backcast/manifest.json --root=data/backcast --eval=2018-03-01..2020-12-31
+      - name: Risk variants of BTC trend across 3 windows (pre-declared 2026-11-25)
+        run: node scripts/learning-rotation-backtest.mjs --variants=data/backcast/manifest.json:data/backcast,data/rotation/manifest.json:data/rotation
