@@ -78,7 +78,7 @@ export function simulate(panel, policyName, from, to) {
   const idx = a => assets.indexOf(a);
   let i0 = days.findIndex(d => d >= from); let i1 = days.length - 1; while (days[i1] > to) i1--;
   let w = Object.fromEntries(assets.map(a => [a, 0])), equity = 1, peak = 1, maxDd = 0, turnover = 0, trades = 0;
-  const curve = [];
+  const curve = [], decisions = [];
   for (let i = i0; i <= i1; i++) {
     // 1) earn today's return with yesterday's weights
     if (i > i0) {
@@ -110,14 +110,21 @@ export function simulate(panel, policyName, from, to) {
     if (tv > 1e-9 && (pol.rebalance !== 'never' || i === i0)) {
       if (pol.rebalance === 'daily' && tv < (pol.driftTol ?? 0.02)) continue; // ignore drift-only rebalances
       equity *= 1 - COST * tv; turnover += tv; trades++;
+      decisions.push({ i, day: days[i], from: { ...w }, to: Object.fromEntries(assets.map(a => [a, target[a] || 0])), tv });
       w = Object.fromEntries(assets.map(a => [a, target[a] || 0]));
     }
   }
+  const alloc = (wv, i, j) => { let r = 0; for (const a of assets) { const p0 = px[idx(a)][i], p1 = px[idx(a)][j]; if (wv[a] > 0 && p0 && p1) r += wv[a] * (p1 / p0 - 1); } return r; };
+  const graded = decisions.filter(d => d.i > i0 && d.i + 30 < days.length).map(d => {
+    const edge = alloc(d.to, d.i, d.i + 30) - alloc(d.from, d.i, d.i + 30) - COST * d.tv; return { day: d.day, edge, hit: edge > 0 }; });
+  const decisionScore = { graded: graded.length, hits: graded.filter(g => g.hit).length,
+    hitPct: graded.length ? r1(100 * graded.filter(g => g.hit).length / graded.length) : null,
+    avgEdgePct: graded.length ? r1(100 * graded.reduce((x, g) => x + g.edge, 0) / graded.length) : null };
   const yrs = (Date.parse(days[i1]) - Date.parse(days[i0])) / (365.25 * DAY);
   const byYear = {};
   for (let k = 0; k < curve.length; k++) { const y = curve[k][0].slice(0, 4); byYear[y] ??= { start: k ? curve[k - 1][1] : 1 }; byYear[y].end = curve[k][1]; }
   return { policy: policyName, from: days[i0], to: days[i1], returnPct: r1(100 * (equity - 1)), cagrPct: r1(100 * (equity ** (1 / yrs) - 1)), maxDdPct: r1(100 * maxDd),
-    score: r1(100 * (equity - 1) - 0.5 * 100 * maxDd), turnover: r1(turnover), rebalances: trades,
+    score: r1(100 * (equity - 1) - 0.5 * 100 * maxDd), turnover: r1(turnover), rebalances: trades, decisionScore,
     byYear: Object.fromEntries(Object.entries(byYear).map(([y, v]) => [y, r1(100 * (v.end / v.start - 1))])) };
 }
 const r1 = x => Math.round(x * 10) / 10;
@@ -127,12 +134,18 @@ if (import.meta.url === `file://${process.argv[1]}` && args.variants) {
   const [bc, mn] = args.variants.split(',').map(x => x.split(':'));
   const pb = buildPanel(loadCloses({ manifest: bc[0], root: bc[1] })), pm = buildPanel(loadCloses({ manifest: mn[0], root: mn[1] }));
   const windows = [['2018-03-01', '2020-12-31', pb], ['2021-07-01', '2024-12-31', pm], ['2025-01-01', pm.days[pm.days.length - 1], pm]];
-  const out = {};
-  for (const v of Object.keys(RISK_VARIANTS)) {
-    out[v] = windows.map(([f, t, p]) => { const r = simulate(p, v, f, t); return { window: `${f.slice(0, 4)}-${t.slice(0, 4)}`, ret: r.returnPct, dd: r.maxDdPct, calmar: r.maxDdPct ? Math.round(r.cagrPct / r.maxDdPct * 100) / 100 : null, trades: r.rebalances, years: r.byYear }; });
+  const out = {}, dec = {};
+  for (const v of [...Object.keys(RISK_VARIANTS), 'ROTATE_TOP1']) {
+    out[v] = windows.map(([f, t, p]) => { const r = simulate(p, v, f, t); return { window: `${f.slice(0, 4)}-${t.slice(0, 4)}`, ret: r.returnPct, dd: r.maxDdPct, calmar: r.maxDdPct ? Math.round(r.cagrPct / r.maxDdPct * 100) / 100 : null, trades: r.rebalances, years: r.byYear, ds: r.decisionScore }; });
+    const g = out[v].reduce((a, w) => ({ graded: a.graded + w.ds.graded, hits: a.hits + w.ds.hits, edgeSum: a.edgeSum + (w.ds.avgEdgePct || 0) * w.ds.graded }), { graded: 0, hits: 0, edgeSum: 0 });
+    dec[v] = { graded: g.graded, hits: g.hits, hitPct: g.graded ? Math.round(1000 * g.hits / g.graded) / 10 : null, avgEdgePct: g.graded ? Math.round(10 * g.edgeSum / g.graded) / 10 : null,
+      byWindow: out[v].map(w => `${w.window}: ${w.ds.hits}/${w.ds.graded} (${w.ds.hitPct}%, edge ${w.ds.avgEdgePct}%)`),
+      c5Historical: g.graded >= 10 && g.hits / g.graded >= 0.55 ? 10 : 0 };
     const worst = Math.max(...out[v].map(w => w.dd));
     console.log(`${v.padEnd(22)} worstDD ${String(worst).padStart(5)}%  ${out[v].map(w => `${w.window}: ret ${w.ret}% dd ${w.dd}% calmar ${w.calmar} trades ${w.trades}`).join(' | ')}`);
   }
+  console.log('== HISTORICAL DECISION GRADING (30d vs not acting, net of switch cost; pass = >=10 decisions and >=55% hits) ==');
+  for (const [v, d] of Object.entries(dec)) console.log(`${v.padEnd(22)} ${d.hits}/${d.graded} = ${d.hitPct}%  avgEdge ${d.avgEdgePct}%  C5hist ${d.c5Historical}  | ${d.byWindow.join(' | ')}`);
   console.log('SHADOW_RISK_VARIANTS=' + JSON.stringify(out));
 } else if (import.meta.url === `file://${process.argv[1]}` && args.eval) {
   // Backcast mode: score the FIXED menu on a window never used for selection (e.g. 2018-2020).
